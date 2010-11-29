@@ -186,7 +186,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
  * Throws: NoInputException if the user does not provide any value.
  *         ConvError if the user does not provide any value.
  */
-T require(T, alias cond)(string question) {
+T require(T, alias cond)(ref string question) {
 	alias unaryFun!(cond) call;
 	T ans;
 	do {
