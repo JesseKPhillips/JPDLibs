@@ -2,6 +2,9 @@ This project is built from branches. In stead of having every library I create r
 
 I don't know if this is the best idea, but I can always merge my branches if I decide to.
 
+The code is released under the Boost License unless otherwise specified.
+www.boost.org/LICENSE_1_0.txt
+
 Current projects are:
 
 cmdln.interact -- Provides a nicer interface to commandline interaction with the user.
