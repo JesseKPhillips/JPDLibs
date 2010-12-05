@@ -5,4 +5,7 @@ I don't know if this is the best idea, but I can always merge my branches if I d
 Current projects are:
 
 cmdln.interact -- Provides a nicer interface to commandline interaction with the user.
+
 spelling.suggest -- Suggest a word from a misspelled word. Requires training.
+
+csv -- A parser for CSV files the D language. Or any separation scheme. If ambitious I may even have it work for any range similar to std.algorithm.Splitter.
