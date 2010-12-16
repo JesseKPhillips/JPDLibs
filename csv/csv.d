@@ -1,17 +1,46 @@
+/**
+ * Written by Jesse Phillips
+ *
+ * License is Boost
+ *
+ * Sorry for the lack of documentation.
+ *
+ * -------
+ * 
+ * string str = `76,26,22`;
+ * int[] ans = [76,26,22];
+ * auto records = csv!int(str);
+ * 
+ * int count;
+ * foreach(record; records) {
+ * 	foreach(cell; record) {
+ * 		assert(ans[count] == cell);
+ * 		count++;
+ * 	}
+ * }
+ * -------
+ */
+module csv;
+
 import std.array;
 import std.range;
 import std.conv;
 import std.traits;
 import std.stdio;
 
-struct RecordList(T) {
+/**
+ */
+struct RecordList(Contents, Range, Separator)
+{
 private:
-	string _input;
-	dchar _separator;
-	dchar _quote;
-	dchar _recordBreak;
+	Range _input;
+	Separator _separator;
+	Separator _quote;
+	Separator _recordBreak;
 public:
-	this(string input, dchar separator, dchar quote, dchar recordBreak)
+	/**
+	 */
+	this(Range input, Separator separator, Separator quote, Separator recordBreak)
 	{
 		_input = input;
 		_separator = separator;
@@ -19,33 +48,39 @@ public:
 		_recordBreak = recordBreak;
 	}
 
+	/**
+	 */
 	@property auto front()
 	{
 		assert(!empty);
-		static if(is(T == struct) || is(T == class)) {
-			auto r = Record!string(_input, _separator, _quote, _recordBreak);
+		static if(is(Contents == struct) || is(Contents == class)) {
+			auto r = Record!(Range,Range,Separator)(_input, _separator, _quote, _recordBreak);
 			r.popFront();
-			alias FieldTypeTuple!(T) types;
-			T recordType;
-			foreach(i, t; types) {
+			alias FieldTypeTuple!(Contents) types;
+			Contents recordContentsype;
+			foreach(i, U; types) {
 				auto token = csvToken(_input, _separator,_quote,_recordBreak,false);
-				auto v = to!(t)(token);
-				recordType.tupleof[i] = v;
+				auto v = to!(U)(token);
+				recordContentsype.tupleof[i] = v;
 			}
 
-			return recordType;
+			return recordContentsype;
 		} else {
-			auto r = Record!T(_input, _separator, _quote, _recordBreak);
+			auto r = Record!(Contents,Range,Separator)(_input, _separator, _quote, _recordBreak);
 			r.popFront();
 			return r;
 		}
 	}
 
+	/**
+	 */
 	@property bool empty()
 	{
 		return _input.empty;
 	}
 
+	/**
+	 */
 	void popFront()
 	{
 		while(csvToken(_input, _separator,_quote,_recordBreak,false) !is null) {}
@@ -54,16 +89,20 @@ public:
 	}
 }
 
-struct Record(T) if(!is(T == class) && !is(T == struct)) {
+/**
+ */
+struct Record(Contents, Range, Separator) if(!is(Contents == class) && !is(Contents == struct)) {
 private:
-	string _input;
-	dchar _separator;
-	dchar _quote;
-	dchar _recordBreak;
-	T curToken;
+	Range _input;
+	Separator _separator;
+	Separator _quote;
+	Separator _recordBreak;
+	Contents curContentsoken;
 	bool _empty;
 public:
-	this(ref string input, dchar separator, dchar quote, dchar recordBreak)
+	/**
+	 */
+	this(ref Range input, Separator separator, Separator quote, Separator recordBreak)
 	{
 		_input = input;
 		_separator = separator;
@@ -71,17 +110,23 @@ public:
 		_recordBreak = recordBreak;
 	}
 
-	@property T front()
+	/**
+	 */
+	@property Contents front()
 	{
 		assert(!empty);
-		return curToken;
+		return curContentsoken;
 	}
 
+	/**
+	 */
 	@property bool empty()
 	{
 		return _empty;
 	}
 
+	/**
+	 */
 	void popFront()
 	{
 		auto str = csvToken(_input, _separator, _quote, _recordBreak,false);
@@ -90,12 +135,14 @@ public:
 			return;
 		}
 
-		curToken = to!T(str);
+		curContentsoken = to!Contents(str);
 	}
 }
 
-auto csv(T = string)(string data) {
-	return RecordList!T(data, ',', '"', '\n');
+/**
+ */
+auto csv(Contents = string)(string data) {
+	return RecordList!(Contents,string,dchar)(data, ',', '"', '\n');
 }
 
 unittest {
@@ -154,11 +201,11 @@ unittest {
 	assert(count == 3);
 }
 
-string csvNextToken(dchar sep = ',', dchar quote = '"', dchar recordBreak = '\n')
+private string csvNextToken(dchar sep = ',', dchar quote = '"', dchar recordBreak = '\n')
                  (ref string line, bool quoted = false) {
 	return csvToken(line, sep, quote, recordBreak, quoted);
 }
-string csvToken(ref string line, dchar sep = ',', dchar quote = '"',
+private string csvToken(ref string line, dchar sep = ',', dchar quote = '"',
 	               dchar recordBreak = '\n', bool startQuoted = false) {
 	bool quoted = startQuoted;
 	bool escQuote;
@@ -211,6 +258,8 @@ string csvToken(ref string line, dchar sep = ',', dchar quote = '"',
 	return ans;
 }
 
+/**
+ */
 class IncompleteCellException : Exception {
 	string partialData;
 	this(string cellPartial, string msg) {
