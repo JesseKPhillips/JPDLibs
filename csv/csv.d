@@ -29,6 +29,7 @@ import std.traits;
 import std.stdio;
 
 /**
+ * Range which provides access to CSV Records and Tokens.
  */
 struct RecordList(Contents, Range, Separator)
 {
@@ -140,11 +141,22 @@ public:
 }
 
 /**
+ * Builds a RecordList range for iterating over tokens found in data.
+ *
+ * Returns:
+ *      If Contents is a struct or class, the range will return a
+ *      struct/class populated by a single record.
+ *
+ *      Otherwise the range will return a Record range of the type.
+ *
+ * Throws:
+ *       IncompleteCellToken When data is shown to not be complete.
  */
 auto csv(Contents = string)(string data) {
 	return RecordList!(Contents,string,dchar)(data, ',', '"', '\n');
 }
 
+// Test standard iteration over data.
 unittest {
 	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
 	auto records = csv(str);
@@ -158,6 +170,7 @@ unittest {
 	assert(count == 6);
 }
 
+// Test structure conversion interface.
 unittest {
 	string str = "Hello,65,63.63\nWorld,123,3673.562";
 	struct Layout {
@@ -186,6 +199,7 @@ unittest {
 	assert(count == 2);
 }
 
+// Test data conversion interface
 unittest {
 	string str = `76,26,22`;
 	int[] ans = [76,26,22];
@@ -201,10 +215,31 @@ unittest {
 	assert(count == 3);
 }
 
-private string csvNextToken(dchar sep = ',', dchar quote = '"', dchar recordBreak = '\n')
-                 (ref string line, bool quoted = false) {
-	return csvToken(line, sep, quote, recordBreak, quoted);
+/**
+ * Lower level control over parsing CSV. Templated for aliasing with a
+ * custom sep, quote and recordBreak. At this time it is not ready for
+ * public consumption.
+ *
+ * This function consumes the input and will not consume or surpass
+ * the recordBreak.
+ *
+ * Returns:
+ *        The next CSV token.
+ *        null if there is no data or are at the end of the record.
+ */
+private string csvNextToken
+           (dchar sep = ',', dchar quote = '"', dchar recordBreak = '\n')
+           (ref string input, bool quoted = false) {
+	return csvToken(input, sep, quote, recordBreak, quoted);
 }
+
+/**
+ * Used internally to return a token based on the sep, quote, and recordBreak.
+ *
+ * Returns:
+ *        The next CSV Token.
+ *        null if there is no data or are at the end of the record.
+ */
 private string csvToken(ref string line, dchar sep = ',', dchar quote = '"',
 	               dchar recordBreak = '\n', bool startQuoted = false) {
 	bool quoted = startQuoted;
@@ -216,8 +251,8 @@ private string csvToken(ref string line, dchar sep = ',', dchar quote = '"',
 		if(line.front == quote) {
 			// By turning off quoted and turning on escQuote
 			// I can tell when to add a quote to the string
-			// escQuote is turned to false when it escapse a
-			// quote or is followed by o non-quote (see outside else).
+			// escQuote is turned to false when it escapes a
+			// quote or is followed by a non-quote (see outside else).
 			// They are mutually exclusive, but provide different information.
 			if(quoted) {
 				escQuote = true;
@@ -259,6 +294,8 @@ private string csvToken(ref string line, dchar sep = ',', dchar quote = '"',
 }
 
 /**
+ * Exception thrown when a Token is identified to not be
+ * completed.
  */
 class IncompleteCellException : Exception {
 	string partialData;
@@ -268,6 +305,7 @@ class IncompleteCellException : Exception {
 	}
 }
 
+// Test csvNextToken on simplest form and correct formats.
 unittest {
 	string str = "Hello,65,63.63\nWorld,123,3673.562";
 
@@ -302,6 +340,7 @@ unittest {
 	assert(a.empty);
 }
 
+// Test quoted tokens
 unittest {
 	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
 
@@ -332,6 +371,7 @@ unittest {
 	assert(str == "\nNot here");
 }
 
+// Test empty data is pulled at end of record.
 unittest {
 	string str = "Hello,";
 	auto a = csvNextToken(str);
@@ -343,6 +383,7 @@ unittest {
 	assert(a !is null);
 }
 
+// Test exceptions
 unittest {
 	string str = "\"It is me\nNot here";
 
@@ -353,10 +394,8 @@ unittest {
 		assert(ice.partialData == "It is me\nNot here");
 		assert(str == "");
 	}
-}
 
-unittest {
-	string str = "It is me Not here\"";
+	str = "It is me Not here\"";
 
 	try {
 		auto a = csvNextToken(str);
@@ -368,6 +407,7 @@ unittest {
 }
 
 
+// Test modifying token separators
 unittest {
 	string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/-Not here";
 
@@ -400,6 +440,7 @@ unittest {
 	assert(str == "-Not here");
 }
 
+// Test using csvNextToken as a splitter with "quoting"
 unittest {
 	string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/-Not here";
 
@@ -409,7 +450,7 @@ unittest {
 	a = nToken(str);
 	a = nToken(str);
 	a = nToken(str);
-	assert(a !is null);
+	a = nToken(str);
 	assert(str == "");
 
 	a = nToken(str);
