@@ -3,13 +3,12 @@
  *
  * License is Boost
  *
- * Sorry for the lack of documentation.
+ * Example for integer data:
  *
  * -------
- * 
  * string str = `76,26,22`;
  * int[] ans = [76,26,22];
- * auto records = csv!int(str);
+ * auto records = csvText!int(str);
  * 
  * int count;
  * foreach(record; records) {
@@ -17,6 +16,25 @@
  * 		assert(ans[count] == cell);
  * 		count++;
  * 	}
+ * }
+ * -------
+ * 
+ * Example using a struct:
+ * 
+ * -------
+ * string str = "Hello,65,63.63\nWorld,123,3673.562";
+ * struct Layout {
+ * 	string name;
+ * 	int value;
+ * 	double other;
+ * }
+ * 
+ * auto records = csvText!Layout(str);
+ * 
+ * foreach(record; records) {
+ * 	writeln(record.name);
+ * 	writeln(record.value);
+ * 	writeln(record.other);
  * }
  * -------
  */
@@ -27,6 +45,99 @@ import std.range;
 import std.conv;
 import std.traits;
 import std.stdio;
+
+/**
+ * Builds a RecordList range for iterating over tokens found in data.
+ * This function simplifies the process for standard text input.
+ * For other data create RecordList yourself.
+ *
+ * -------
+ * string str = `76,26,22`;
+ * int[] ans = [76,26,22];
+ * auto records = csvText!int(str);
+ * 
+ * int count;
+ * foreach(record; records) {
+ * 	foreach(cell; record) {
+ * 		assert(ans[count] == cell);
+ * 		count++;
+ * 	}
+ * }
+ * -------
+ *
+ * Returns:
+ *      If Contents is a struct or class, the range will return a
+ *      struct/class populated by a single record.
+ *
+ *      Otherwise the range will return a Record range of the type.
+ *
+ * Throws:
+ *       IncompleteCellToken When data is shown to not be complete.
+ */
+auto csvText(Contents = string, Range)(Range data) if(isSomeString!Range) {
+	return RecordList!(Contents,Range,ElementType!Range)(data, ',', '"', '\n');
+}
+
+deprecated alias csvText csv;
+
+// Test standard iteration over data.
+unittest {
+	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
+	auto records = csvText(str);
+
+	int count;
+	foreach(record; records) {
+		foreach(cell; record) {
+			count++;
+		}
+	}
+	assert(count == 6);
+}
+
+// Test structure conversion interface.
+unittest {
+	string str = "Hello,65,63.63\nWorld,123,3673.562";
+	struct Layout {
+		string name;
+		int value;
+		double other;
+	}
+
+	Layout ans[2];
+	ans[0].name = "Hello";
+	ans[0].value = 65;
+	ans[0].other = 663.63;
+	ans[1].name = "World";
+	ans[1].value = 65;
+	ans[1].other = 663.63;
+
+	auto records = csvText!Layout(str);
+
+	int count;
+	foreach(record; records) {
+		ans[count].name = record.name;
+		ans[count].value = record.value;
+		ans[count].other = record.other;
+		count++;
+	}
+	assert(count == 2);
+}
+
+// Test data conversion interface
+unittest {
+	string str = `76,26,22`;
+	int[] ans = [76,26,22];
+	auto records = csvText!int(str);
+
+	int count;
+	foreach(record; records) {
+		foreach(cell; record) {
+			assert(ans[count] == cell);
+			count++;
+		}
+	}
+	assert(count == 3);
+}
 
 /**
  * Range which provides access to CSV Records and Tokens.
@@ -138,81 +249,6 @@ public:
 
 		curContentsoken = to!Contents(str);
 	}
-}
-
-/**
- * Builds a RecordList range for iterating over tokens found in data.
- *
- * Returns:
- *      If Contents is a struct or class, the range will return a
- *      struct/class populated by a single record.
- *
- *      Otherwise the range will return a Record range of the type.
- *
- * Throws:
- *       IncompleteCellToken When data is shown to not be complete.
- */
-auto csv(Contents = string)(string data) {
-	return RecordList!(Contents,string,dchar)(data, ',', '"', '\n');
-}
-
-// Test standard iteration over data.
-unittest {
-	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
-	auto records = csv(str);
-
-	int count;
-	foreach(record; records) {
-		foreach(cell; record) {
-			count++;
-		}
-	}
-	assert(count == 6);
-}
-
-// Test structure conversion interface.
-unittest {
-	string str = "Hello,65,63.63\nWorld,123,3673.562";
-	struct Layout {
-		string name;
-		int value;
-		double other;
-	}
-
-	Layout ans[2];
-	ans[0].name = "Hello";
-	ans[0].value = 65;
-	ans[0].other = 663.63;
-	ans[1].name = "World";
-	ans[1].value = 65;
-	ans[1].other = 663.63;
-
-	auto records = csv!Layout(str);
-
-	int count;
-	foreach(record; records) {
-		ans[count].name = record.name;
-		ans[count].value = record.value;
-		ans[count].other = record.other;
-		count++;
-	}
-	assert(count == 2);
-}
-
-// Test data conversion interface
-unittest {
-	string str = `76,26,22`;
-	int[] ans = [76,26,22];
-	auto records = csv!int(str);
-
-	int count;
-	foreach(record; records) {
-		foreach(cell; record) {
-			assert(ans[count] == cell);
-			count++;
-		}
-	}
-	assert(count == 3);
 }
 
 /**
@@ -442,7 +478,7 @@ unittest {
 
 // Test using csvNextToken as a splitter with "quoting"
 unittest {
-	string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/-Not here";
+	string str = `Hello|World|/Hi ""There""/|//|` ~ "It is\nme-Not here";
 
 	alias csvNextToken!('|','/','\0') nToken;
 	auto a = nToken(str);
@@ -450,7 +486,7 @@ unittest {
 	a = nToken(str);
 	a = nToken(str);
 	a = nToken(str);
-	a = nToken(str);
+	assert(a == "It is\nme-Not here");
 	assert(str == "");
 
 	a = nToken(str);
