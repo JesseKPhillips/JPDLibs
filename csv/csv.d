@@ -309,6 +309,8 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 				break;
 			}
 			if(line.front == recordBreak) {
+				if(ans.back == '\r')
+					ans.popBack();
 				break;
 			}
 		}
@@ -527,4 +529,35 @@ unittest {
 
 	a = csvNextToken(str, '|','/','\0');
 	assert(a is null);
+}
+
+// Test Windows CSV files
+unittest {
+	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here";
+
+	auto a = csvNextToken(str);
+	assert(a == "Hello");
+	assert(str == `World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
+
+	a = csvNextToken(str);
+	assert(a == "World");
+	assert(str == `"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
+
+	a = csvNextToken(str);
+	assert(a == "Hi \"There\"");
+	assert(str == `"",` ~ "\"It is\r\nme\"\r\nNot here");
+
+	a = csvNextToken(str);
+	assert(a == "");
+	assert(a !is null);
+	assert(str == "\"It is\r\nme\"\r\nNot here");
+	
+	a = csvNextToken(str);
+	assert(a == "It is\r\nme");
+	assert(str == "\nNot here");
+
+	a = csvNextToken(str);
+	assert(a == "");
+	assert(a is null);
+	assert(str == "\nNot here");
 }
