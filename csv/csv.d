@@ -161,7 +161,7 @@ unittest {
 /**
  * Range which provides access to CSV Records and Tokens.
  */
-struct RecordList(Contents, string ErrorLevel = "Checked", Range, Separator)
+struct RecordList(Contents = string, string ErrorLevel = "Checked", Range = string, Separator = dchar)
 {
 private:
 	Range _input;
