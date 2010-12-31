@@ -309,8 +309,9 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 				break;
 			}
 			if(line.front == recordBreak) {
-				if(ans.back == '\r')
-					ans.popBack();
+				static if(isSomeChar!Separator)
+					if(ans.back == '\r')
+						ans.popBack();
 				break;
 			}
 		}
@@ -322,11 +323,10 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 				else static if(ErrorLevel == "Unchecked")
 					ans ~= quote;
 				else {
-					static assert(0, "Unknown error level");
+					static assert(0, "Unknown error level " ~ ErrorLevel);
 				}
 			} else {
 				// Not quoted, non-quote character
-				assert(escQuote == false);
 				ans ~= line.front;
 			}
 		} else {
@@ -347,9 +347,11 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 				}
 			} else {
 				// Quoted, non-quote character
-				if(escQuote) {
-					throw new IncompleteCellException(ans, "Content continues after end quote, needs to be escaped.");
-				}
+				static if(isSomeChar!Separator)
+					if(line.front != '\r')
+						if(escQuote) {
+							throw new IncompleteCellException(ans, "Content continues after end quote, needs to be escaped.");
+						}
 				ans ~= line.front;
 			}
 		}
