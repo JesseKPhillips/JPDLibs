@@ -39,8 +39,8 @@ void doubles() {
 }
 
 void doubleSep() {
-	string str = "5|35.5|63.15";
-	auto records = RecordList!(double,"Checked",string,string)(str, "|", "\"", "&");
+	string str = "5||35.5||63.15";
+	auto records = RecordList!(double,"Checked",string,string)(str, "||", "\"", "&");
 
 	foreach(record; records) {
 		writeln("-----------");
