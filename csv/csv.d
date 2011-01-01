@@ -285,9 +285,13 @@ public:
  *        The next CSV token.
  *        null if there is no data or are at the end of the record.
  */
+private Range csvNextToken(string ErrorLevel = "Checked", Range) (ref Range line) if(isSomeString!Range) {
+	return csvNextToken!(ErrorLevel, Range)(line, ',', '"', '\n');
+}
+ 
 private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = ElementType!Range)
-                          (ref Range line, Separator sep = ',',
-                           Separator quote = '"', Separator recordBreak = '\n',
+                          (ref Range line, Separator sep,
+                           Separator quote, Separator recordBreak,
                            bool startQuoted = false) {
 	bool quoted = startQuoted;
 	bool escQuote;
@@ -483,6 +487,16 @@ unittest {
 	assert(a == "Break me");
 	a = csvNextToken!"Unchecked"(str);
 	assert(a == " off a \"Kit Kat\" bar");
+
+	str = "off a \"Kit Kat\" bar";
+
+	try {
+		csvNextToken(str);
+		assert(0);
+	} catch(IncompleteCellException ice) {
+		assert(ice.partialData == "off a ");
+		assert(str == "\"Kit Kat\" bar");
+	}
 }
 
 
@@ -562,4 +576,20 @@ unittest {
 	assert(a == "");
 	assert(a is null);
 	assert(str == "\nNot here");
+}
+
+// Testing string separators
+unittest {
+	string str = "5||35.5||63.15";
+	auto records = RecordList!(double,"Checked",string,string)(str, "||", "\"", "&");
+
+	auto ans = [5,35.5,63.15];
+
+	foreach(record; records) {
+		int count;
+		foreach(cell; record) {
+			assert(ans[count] == cell);
+			count++;
+		}
+	}
 }

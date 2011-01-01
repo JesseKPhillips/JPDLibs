@@ -9,6 +9,8 @@ void main() {
 	strings();
 	writeln("\nPrinting doubles");
 	doubles();
+	writeln("\nPrinting with string based sep");
+	doubleSep();
 }
 
 void strings() {
@@ -36,3 +38,14 @@ void doubles() {
 	}
 }
 
+void doubleSep() {
+	string str = "5|35.5|63.15";
+	auto records = RecordList!(double,"Checked",string,string)(str, "|", "\"", "&");
+
+	foreach(record; records) {
+		writeln("-----------");
+		foreach(cell; record) {
+			writeln("[", cell, "]");
+		}
+	}
+}
