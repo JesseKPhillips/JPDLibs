@@ -76,7 +76,8 @@ import newadds;
  * Throws:
  *       IncompleteCellToken When data is shown to not be complete.
  */
-auto csvText(Contents = string, string ErrorLevel = "Checked", Range)
+auto csvText(Contents = string,
+             Malformed ErrorLevel = Malformed.throwException, Range)
             (Range data) if (isSomeString ! Range)
 {
     return RecordList!(Contents, ErrorLevel, Range, string)
@@ -156,7 +157,7 @@ unittest
 unittest
 {
     string str = "It is me \"Not here\"";
-    foreach (record; csvText ! (string, "Unchecked") (str))
+    foreach (record; csvText!(string, Malformed.ignore)(str))
     {
         foreach (cell; record)
         {
@@ -169,7 +170,7 @@ unittest
     {
         string a, b;
     }
-    foreach (record; csvText ! (Ans, "Unchecked") (str))
+    foreach (record; csvText ! (Ans, Malformed.ignore) (str))
     {
         assert (record.a == "It is me \"Not here\"");
         assert (record.b == "In \"the\" sand");
@@ -180,7 +181,7 @@ unittest
  * Range which provides access to CSV Records and Tokens.
  */
 struct RecordList(Contents = string, 
-                  string ErrorLevel = "Checked", 
+                  Malformed ErrorLevel = Malformed.throwException, 
                   Range, Separator)
 {
 private:
@@ -253,7 +254,8 @@ public:
 
 /**
  */
-struct Record(Contents, string ErrorLevel = "Checked", Range, Separator)
+struct Record(Contents, Malformed ErrorLevel = Malformed.throwException,
+              Range, Separator)
              if(!is(Contents == class) && !is(Contents == struct)) {
 private:
     Range _input;
@@ -320,14 +322,16 @@ public:
  * Returns:
  *        The next CSV token.
  */
-private Range csvNextToken(string ErrorLevel = "Checked", Range)
+private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
+                           Range)
                           (ref Range line) if(hasSlicing!Range)
 {
     return csvNextToken!(ErrorLevel, Range)(line, ",", "\"", "\n");
 }
  
 /// Ditto
-private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
+private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
+                           Range, Separator)
                           (ref Range line, Separator sep,
                            Separator quote, Separator recordBreak) 
                           if(hasSlicing!Range && isInputRange!Range)
@@ -343,10 +347,10 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
         // Should find either an closing quote or an escaping quote
         if(count == -1) 
         {
-            static if(ErrorLevel == "Checked")
+            static if(ErrorLevel == Malformed.throwException)
                 throw new IncompleteCellException(line,
                       "In quoted section but input is empty.");
-            else static if(ErrorLevel == "Unchecked")
+            else static if(ErrorLevel == Malformed.ignore)
                 return line;
         }
 
@@ -390,11 +394,10 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
                 auto add = countUntil (line[count..$], quote);
                 if(add == -1)
                 {
-                    static if(ErrorLevel == "Checked") {
+                    static if(ErrorLevel == Malformed.throwException)
                         throw new IncompleteCellException(line,
                              "In quoted section but input is empty.");
-                    }
-                    else static if(ErrorLevel == "Unchecked")
+                    else static if(ErrorLevel == Malformed.ignore)
                     {
                         ans ~= line;
                         break;
@@ -411,7 +414,7 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
     }
     else 
     {
-        static if(ErrorLevel == "Checked")
+        static if(ErrorLevel == Malformed.throwException)
         {
             auto count = countUntil(line, sep, recordBreak, quote);
             if(count != -1)
@@ -419,11 +422,8 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
                     throw new IncompleteCellException(line[0..count],
                           "Quote located in unquoted token");
         }
-        else
-            static if(ErrorLevel == "Unchecked")
-                auto count = countUntil(line, sep, recordBreak);
-            else
-                static assert(0, "Unknown error level " ~ ErrorLevel);
+        else static if(ErrorLevel == Malformed.ignore)
+            auto count = countUntil(line, sep, recordBreak);
 
         if(count == -1)
             count = line.length;
@@ -435,17 +435,28 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
 }
 
 /**
+ * Determines the behavior for when an error is detected.
+ */
+enum Malformed
+{
+    ///
+    ignore,
+    ///
+    throwException
+}
+
+/**
  * Exception thrown when a Token is identified to not be
  * completed.
  */
 class IncompleteCellException:Exception
 {
-  string partialData;
-  this(string cellPartial, string msg)
-  {
-    super(msg);
-    partialData = cellPartial;
-  }
+    string partialData;
+    this(string cellPartial, string msg)
+    {
+        super(msg);
+        partialData = cellPartial;
+    }
 }
 
 // Test csvNextToken on simplest form and correct format.
@@ -571,10 +582,10 @@ unittest
 
     str = "Break me, off a \"Kit Kat\" bar";
 
-    auto a = csvNextToken!"Unchecked"(str);
+    auto a = csvNextToken!(Malformed.ignore)(str);
     assert(a == "Break me");
     str.popFront();
-    a = csvNextToken!"Unchecked"(str);
+    a = csvNextToken!(Malformed.ignore)(str);
     assert(a == " off a \"Kit Kat\" bar");
 
     str = "off a \"Kit Kat\" bar";
@@ -690,7 +701,8 @@ unittest
 {
     string str = "5||35.5||63.15";
     auto records =
-        RecordList!(double, "Checked", string, string)(str, "||", "\"", "&");
+        RecordList!(double, Malformed.throwException, string, string)
+                   (str, "||", "\"", "&");
     auto ans = [5,35.5,63.15];
 
     foreach(record; records)
