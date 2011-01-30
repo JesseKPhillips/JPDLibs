@@ -77,12 +77,11 @@ import newadds;
  *       IncompleteCellToken When data is shown to not be complete.
  */
 auto csvText(Contents = string, string ErrorLevel = "Checked", Range)(Range data) if(isSomeString!Range) {
-	return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)(data, ",", "\"", "\n");
+	return RecordList!(Contents,ErrorLevel,Range,string)(data, ",", "\"", "\n");
 }
 
 deprecated alias csvText csv;
 
-version(none)
 // Test standard iteration over data.
 unittest {
 	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
@@ -97,7 +96,6 @@ unittest {
 	assert(count == 6);
 }
 
-version(none)
 // Test structure conversion interface.
 unittest {
 	string str = "Hello,65,63.63\nWorld,123,3673.562";
@@ -127,7 +125,6 @@ unittest {
 	assert(count == 2);
 }
 
-version(none)
 // Test data conversion interface
 unittest {
 	string str = `76,26,22`;
@@ -144,7 +141,6 @@ unittest {
 	assert(count == 3);
 }
 
-version(none)
 // Test unchecked read
 unittest {
 	string str = "It is me \"Not here\"";
@@ -167,7 +163,7 @@ unittest {
 /**
  * Range which provides access to CSV Records and Tokens.
  */
-struct RecordList(Contents = string, string ErrorLevel = "Checked", Range = string, Separator = dchar)
+struct RecordList(Contents = string, string ErrorLevel = "Checked", Range, Separator)
 {
 private:
 	Range _input;
@@ -196,16 +192,17 @@ public:
 			alias FieldTypeTuple!(Contents) types;
 			Contents recordContentsype;
 			foreach(i, U; types) {
-				auto token = csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak,false);
+				auto token = r.front;
 				auto v = to!(U)(token);
 				recordContentsype.tupleof[i] = v;
+				r.popFront();
 			}
 
 			return recordContentsype;
 		} else {
-			auto r = Record!(Contents,ErrorLevel,Range,Separator)(_input, _separator, _quote, _recordBreak);
-			r.popFront();
-			return r;
+			auto recordRange = Record!(Contents,ErrorLevel,Range,Separator)(_input, _separator, _quote, _recordBreak);
+			recordRange.popFront();
+			return recordRange;
 		}
 	}
 
@@ -220,9 +217,11 @@ public:
 	 */
 	void popFront()
 	{
-		while(csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak,false) !is null) {}
-		if(!_input.empty && startsWith(_input, _recordBreak))
-			_input.popFront();
+		while(!_input.empty && !startsWith(_input, _recordBreak)) {
+			skipOver(_input, _separator);
+			csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak);
+		}
+		skipOver(_input, _recordBreak);
 	}
 }
 
@@ -266,13 +265,14 @@ public:
 	 */
 	void popFront()
 	{
-		auto str = csvNextToken!(ErrorLevel, Range, Separator)(_input, _separator, _quote, _recordBreak,false);
-		if(str is null) {
+		if(_input.empty || startsWith(_input, _recordBreak)) {
 			_empty = true;
 			return;
 		}
 
+		auto str = csvNextToken!(ErrorLevel, Range, Separator)(_input, _separator, _quote, _recordBreak);
 		curContentsoken = to!Contents(str);
+		skipOver(_input, _separator);
 	}
 }
 
@@ -289,7 +289,6 @@ public:
  *
  * Returns:
  *        The next CSV token.
- *        null if there is no data or are at the end of the record.
  */
 private Range csvNextToken(string ErrorLevel = "Checked", Range) (ref Range line) if(hasSlicing!Range) {
 	return csvNextToken!(ErrorLevel, Range)(line, ",", "\"", "\n");
@@ -297,11 +296,9 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range) (ref Range line
  
 private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
                           (ref Range line, Separator sep,
-                           Separator quote, Separator recordBreak,
-                           bool startQuoted = false) 
+                           Separator quote, Separator recordBreak) 
                 if(hasSlicing!Range && isInputRange!Range) {
 	enum size_t _unComputed = size_t.max - 1, _atEnd = size_t.max;
-	bool quoted = startQuoted;
 	bool escQuote;
 	size_t frontLength = _unComputed;
 	if(line.empty || startsWith(line, recordBreak))
@@ -378,72 +375,6 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator)
 		line = line[count..$];
 		return ans;
 	}
-												
-version(none) {
-	while(!line.empty) {
-		assert(!(quoted && escQuote));
-		if(!quoted) {
-			if(startsWith(line, sep)) { // When not quoted the token ends at sep
-				if(line.length > 1)
-					line.popFront();
-				break;
-			}
-			if(startsWith(line, recordBreak)) {
-				static if(isSomeChar!Separator)
-					if(ans.back == '\r')
-						ans.popBack();
-				break;
-			}
-		}
-		if(!quoted && !escQuote) {
-			if(startsWith(line, quote)) {
-				// Not quoted, but quote found
-				static if(ErrorLevel == "Checked")
-					throw new IncompleteCellException(ans, "Quote located in unquoted token");
-				else static if(ErrorLevel == "Unchecked")
-					ans ~= quote;
-				else {
-					static assert(0, "Unknown error level " ~ ErrorLevel);
-				}
-			} else {
-				// Not quoted, non-quote character
-				ans ~= line.front;
-			}
-		} else {
-			if(startsWith(line, quote)) {
-				// Quoted, quote found
-				// By turning off quoted and turning on escQuote
-				// I can tell when to add a quote to the string
-				// escQuote is turned to false when it escapes a
-				// quote or is followed by a non-quote (see outside else).
-				// They are mutually exclusive, but provide different information.
-				if(escQuote) {
-					escQuote = false;
-					quoted = true;
-					ans ~= quote;
-				} else {
-					escQuote = true;
-					quoted = false;
-				}
-			} else {
-				// Quoted, non-quote character
-				static if(isSomeChar!Separator)
-					if(line.front != '\r')
-						if(escQuote) {
-							throw new IncompleteCellException(ans, "Content continues after end quote, needs to be escaped.");
-						}
-				ans ~= line.front;
-			}
-		}
-		line.popFront();
-	}
-
-	if(quoted && (line.empty || startsWith(line, recordBreak)))
-		throw new IncompleteCellException(ans,
-		          "Data continues on future lines or trailing quote");
-
-	return ans;
-}
 }
 
 /**
@@ -551,7 +482,6 @@ unittest {
 	assert(str == ",");
 }
 
-version(none) {
 // Test exceptions
 unittest {
 	string str = "\"It is me\nNot here";
@@ -561,7 +491,6 @@ unittest {
 		assert(0);
 	} catch (IncompleteCellException ice) {
 		assert(ice.partialData == "It is me\nNot here");
-		assert(str == "");
 	}
 
 	str = "It is me Not here\"";
@@ -571,13 +500,13 @@ unittest {
 		assert(0);
 	} catch (IncompleteCellException ice) {
 		assert(ice.partialData == "It is me Not here");
-		assert(str == "\"");
 	}
 
 	str = "Break me, off a \"Kit Kat\" bar";
 
 	auto a = csvNextToken!"Unchecked"(str);
 	assert(a == "Break me");
+	str.popFront();
 	a = csvNextToken!"Unchecked"(str);
 	assert(a == " off a \"Kit Kat\" bar");
 
@@ -588,9 +517,7 @@ unittest {
 		assert(0);
 	} catch(IncompleteCellException ice) {
 		assert(ice.partialData == "off a ");
-		assert(str == "\"Kit Kat\" bar");
 	}
-}
 }
 
 
@@ -653,29 +580,33 @@ unittest {
 
 	auto a = csvNextToken(str);
 	assert(a == "Hello");
-	assert(str == `World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
+	assert(str == `,World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
 
+	str.popFront();
 	a = csvNextToken(str);
 	assert(a == "World");
-	assert(str == `"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
+	assert(str == `,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
 
+	str.popFront();
 	a = csvNextToken(str);
 	assert(a == "Hi \"There\"");
-	assert(str == `"",` ~ "\"It is\r\nme\"\r\nNot here");
+	assert(str == `,"",` ~ "\"It is\r\nme\"\r\nNot here");
 
+	str.popFront();
 	a = csvNextToken(str);
 	assert(a == "");
 	assert(a !is null);
-	assert(str == "\"It is\r\nme\"\r\nNot here");
+	assert(str == ",\"It is\r\nme\"\r\nNot here");
 	
+	str.popFront();
 	a = csvNextToken(str);
 	assert(a == "It is\r\nme");
-	assert(str == "\nNot here");
+	assert(str == "\r\nNot here");
 
+	str.popFront();
 	a = csvNextToken(str);
-	assert(a == "");
-	assert(a is null);
-	assert(str == "\nNot here");
+	assert(a == "Not here");
+	assert(str == "");
 }
 
 // Testing string separators
