@@ -502,7 +502,6 @@ unittest
     assert(a == "Hi \"There\"");
     assert(str == `,"",` ~ "\"It is\nme\"\nNot here");
 
-    version(none) {
     str.popFront();
     a = csvNextToken(str);
     assert(a == "");
@@ -512,13 +511,12 @@ unittest
     str.popFront();
     a = csvNextToken(str);
     assert(a == "It is\nme");
-    assert(str == ",\nNot here");
+    assert(str == "\nNot here");
 
     str.popFront();
     a = csvNextToken(str);
-    assert(a == "\nNot here");
+    assert(a == "Not here");
     assert(str == "");
-    }
 }
 
 // Test empty data is pulled at start of record.
