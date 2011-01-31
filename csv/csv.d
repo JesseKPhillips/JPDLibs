@@ -291,14 +291,14 @@ public:
             auto r = Record!(Range, ErrorLevel, Range, Separator)
                               (_input, _separator, _quote, _recordBreak);
 
-            Contents recordContentsype;
+            Contents recordContent;
             if(indices.empty)
             {
                 foreach (i, U; FieldTypeTuple!(Contents))
                 {
                     auto token = r.front;
                     auto v = to!(U)(token);
-                    recordContentsype.tupleof[i] = v;
+                    recordContent.tupleof[i] = v;
                     r.popFront();
                 }
             }
@@ -312,13 +312,13 @@ public:
                     {
                         if(indices[ti] == colIndex)
                         {
-                            recordContentsype.tupleof[ti] = to!ToType(colData);
+                            recordContent.tupleof[ti] = to!ToType(colData);
                         }
                     }
                 }
             }
 
-            return recordContentsype;
+            return recordContent;
         }
         else
         {
@@ -359,7 +359,7 @@ private:
     Separator _separator;
     Separator _quote;
     Separator _recordBreak;
-    Contents curContentsoken;
+    Contents curContent;
     bool _empty;
 public:
     /**
@@ -379,7 +379,7 @@ public:
     @property Contents front()
     {
         assert(!empty);
-        return curContentsoken;
+        return curContent;
     }
 
     /**
@@ -406,7 +406,7 @@ public:
     private void prime() {
         auto str = csvNextToken!(ErrorLevel, Range, Separator)
                                 (_input, _separator, _quote, _recordBreak);
-        curContentsoken = to!Contents(str);
+        curContent = to!Contents(str);
         skipOver(_input, _separator);
     }
 }
