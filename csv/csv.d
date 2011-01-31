@@ -52,7 +52,7 @@ import newadds;
 /**
  * Builds a RecordList range for iterating over tokens found in data.
  * This function simplifies the process for standard text input.
- * For other data create RecordList yourself.
+ * For other data or separators create use recordList.
  *
  * -------
  * string str = `76,26,22`;
@@ -69,13 +69,13 @@ import newadds;
  * -------
  *
  * Returns:
- *      If Contents is a struct or class, the range will return a
- *      struct/class populated by a single record.
+ *      If Contents is a struct, the range will return a
+ *      struct populated by a single record.
  *
- *      Otherwise the range will return a Record range of the type.
+ *      Otherwise the range will return a range of the type.
  *
  * Throws:
- *       IncompleteCellToken When data is shown to not be complete.
+ *        IncompleteCellException When data is shown to not be complete.
  */
 auto csvText(Contents = string,
              Malformed ErrorLevel = Malformed.throwException, Range)
@@ -85,6 +85,7 @@ auto csvText(Contents = string,
                       (data, ",", "\"", "\n");
 }
 
+/// Ditto
 auto csvText(Contents = string,
              Malformed ErrorLevel = Malformed.throwException, Range)
             (Range data, Range[] heading) if (isSomeString ! Range)
@@ -92,8 +93,6 @@ auto csvText(Contents = string,
     return RecordList!(Contents, ErrorLevel, Range, string)
                       (data, ",", "\"", "\n", heading);
 }
-
-deprecated alias csvText csv;
 
 // Test standard iteration over data.
 unittest
@@ -206,20 +205,56 @@ unittest
         }
     }
 
-    str = "It is me \"Not here\",In \"the\" sand";
+    str = "It is me \"Not here\",In \"the\" sand,\"I\" lie";
     struct Ans
     {
-        string a, b;
+        string a, b, c;
     }
     foreach(record; csvText!(Ans, Malformed.ignore) (str))
     {
         assert (record.a == "It is me \"Not here\"");
         assert (record.b == "In \"the\" sand");
+        assert (record.c == "I\" lie");
     }
 }
 
 /**
- * Range which provides access to CSV Records and Tokens.
+ * Builds a range for iterating over data structured the common
+ * CSV format. Use this function if your data uses a custom 
+ * separator, quote, or record break. Use csvText() if your
+ * data conforms to the standard.
+ *
+ * Returns:
+ *      If Contents is a struct, the range will return a
+ *      struct populated by a single record.
+ *
+ *      Otherwise the range will return a range of the type.
+ *
+ * Throws:
+ *        IncompleteCellException When data is shown to not be complete.
+ */
+auto recordList(Contents = string,
+             Malformed ErrorLevel = Malformed.throwException, Range, Separator)
+            (Range data, Separator separator, Separator quote,
+             Separator recordBreak)
+{
+    return RecordList!(Contents, ErrorLevel, Range, Separator)
+                      (data, separator, quote, recordBreak);
+}
+
+///Ditto
+auto recordList(Contents = string,
+             Malformed ErrorLevel = Malformed.throwException, Range, Separator)
+            (Range data, Separator separator, Separator quote,
+             Separator recordBreak, Range[] heading)
+{
+    return RecordList!(Contents, ErrorLevel, Range, Separator)
+                      (data, separator, quote, recordBreak, heading);
+}
+
+/**
+ * Range which provides access to CSV Records. This can be
+ * used with any range type, but is most common with string types.
  */
 struct RecordList(Contents = string,
                   Malformed ErrorLevel = Malformed.throwException, 
@@ -233,8 +268,6 @@ private:
     Separator _recordBreak;
     size_t[] indices;
 public:
-    /**
-     */
     this(Range input, Separator separator, Separator quote,
          Separator recordBreak)
     {
@@ -244,8 +277,6 @@ public:
         _recordBreak = recordBreak;
     }
 
-    /**
-     */
     this(Range input, Separator separator, Separator quote,
          Separator recordBreak, Range[] colHeaders)
     {
@@ -273,7 +304,7 @@ public:
         foreach(i, h; colHeaders)
         {
             immutable index = colToIndex[h];
-            static if(Malformed.throwException)
+            static if(!Malformed.ignore)
                 enforce(index < size_t.max,
                         "Header not found: " ~ to!string(h));
             indices[i] = index;
@@ -281,8 +312,6 @@ public:
         popFront();
     }
 
-    /**
-     */
     @property auto front()
     {
         assert(!empty);
@@ -328,15 +357,11 @@ public:
         }
     }
 
-    /**
-     */
     @property bool empty()
     {
         return _input.empty;
     }
 
-    /**
-     */
     void popFront()
     {
         while(!_input.empty && !startsWith(_input, _recordBreak)) 
@@ -349,6 +374,10 @@ public:
 }
 
 /**
+ * Provides a range over CSV data. This range will iterate up 
+ * to but not past the specified record break. If the data 
+ * starts with a record break it assumed that the data starts 
+ * with an empty record. The original range is consumed during use.
  */
 struct Record(Contents, Malformed ErrorLevel = Malformed.throwException,
               Range, Separator)
@@ -362,8 +391,6 @@ private:
     Contents curContent;
     bool _empty;
 public:
-    /**
-     */
     this(ref Range input, Separator separator, Separator quote, Separator
          recordBreak)
     {
@@ -374,23 +401,17 @@ public:
         prime();
     }
 
-    /**
-     */
     @property Contents front()
     {
         assert(!empty);
         return curContent;
     }
 
-    /**
-     */
     @property bool empty()
     {
         return _empty;
     }
 
-    /**
-     */
     void popFront()
     {
         assert(!empty, "Attempting to popFront() past end of Range");
@@ -450,65 +471,92 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
         // Should find either an closing quote or an escaping quote
         if(count == -1) 
         {
-            static if(ErrorLevel == Malformed.throwException)
+            static if(ErrorLevel == Malformed.ignore)
+                return line;
+            else
                 throw new IncompleteCellException(line,
                       "In quoted section but input is empty.");
-            else static if(ErrorLevel == Malformed.ignore)
-                return line;
         }
 
         Range ans = Range.init;
 
+        // Is broken when
+        //     Data is exhausted 
+        //     End of token is reached
         for (;;)
         {
-            if (startsWith(line[count..$], quote))
-            {
-                // Quoted, quote found
-                // By turning off quoted and turning on escQuote
-                // I can tell when to add a quote to the string
-                // escQuote is turned to false when it escapes a
-                // quote or is followed by a non-quote (see outside else).
-                // They are mutually exclusive, but provide different
-                // information.
-                if (line[count..$].empty)
-                    break;
+            // Stop processing when the end of data is reached.
+            if (line[count..$].empty)
+                break;
 
-                auto next = startsWith(line[count + quote.length..$], 
-                                       quote, sep, recordBreak);
-                if(next == 0)
-                {
-                    throw new IncompleteCellException(line[0..count],
-                          "Content continues after end quote, needs to be" ~
-                          "escaped.");
-                }
-                else if(next == 1)
-                {
+            auto next = startsWith(line[count + quote.length..$], 
+                                   quote, sep, recordBreak);
+            // Data cannot exist after a quote so the next
+            // element must be one of the three.
+            if(next == 0)
+            {
+                static if(ErrorLevel == Malformed.ignore) {
+                    // When ignoring malformed data we move to the
+                    // next quote/separator/recordBreak and do
+                    // not modify the data.
                     count += quote.length;
-                    ans ~= line[0..count];
-                    line = line[count + quote.length..$];
-                    count = 0;
-                }
-                else if(next > 1)
-                {
-                    ans ~= line[0..count];
-                    count += quote.length;
-                    break;
-                }
-                auto add = countUntil (line[count..$], quote);
-                if(add == -1)
-                {
-                    static if(ErrorLevel == Malformed.throwException)
-                        throw new IncompleteCellException(line,
-                             "In quoted section but input is empty.");
-                    else static if(ErrorLevel == Malformed.ignore)
+                    auto add = countUntil(line[count..$], 
+                                          quote, sep, recordBreak);
+                    if(add == -1)
                     {
-                        ans ~= line;
+                        count = line.length;
+                        ans ~= line[0..count];
                         break;
+                    }
+                    else
+                    {
+                        count += add;
+                        ans ~= line[0..count];
+                        line = line[count..$];
+                        count = 0;
+                        continue;
                     }
                 }
                 else
-                    count += add;
+                {
+                    throw new IncompleteCellException(line[0..count],
+                             "Content continues after end quote, needs to be" ~
+                             "escaped.");
+                }
             }
+            // Next element is a quote.
+            else if(next == 1)
+            {
+                count += quote.length;
+                ans ~= line[0..count];
+                line = line[count + quote.length..$];
+                count = 0;
+            }
+            // End of token is reached
+            else if(next > 1)
+            {
+                ans ~= line[0..count];
+                count += quote.length;
+                break;
+            }
+            // Unless the data is poorly formed there should
+            // always be another quote. Under such conditions
+            // the best assumption is to return the rest of
+            // the data when ignoring malformed data.
+            auto add = countUntil(line[count..$], quote);
+            if(add == -1)
+            {
+                static if(ErrorLevel == Malformed.ignore)
+                {
+                    ans ~= line;
+                    break;
+                }
+                else
+                    throw new IncompleteCellException(line,
+                             "In quoted section but input is empty.");
+            }
+            else
+                count += add;
         }
 
         line = line[count..$];
@@ -517,7 +565,13 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
     }
     else 
     {
-        static if(ErrorLevel == Malformed.throwException)
+        // Quotes cannot appear in properly formed data
+        // when the data did not begin with a quote.
+        static if(ErrorLevel == Malformed.ignore)
+        {
+            auto count = countUntil(line, sep, recordBreak);
+        }
+        else 
         {
             auto count = countUntil(line, sep, recordBreak, quote);
             if(count != -1)
@@ -525,8 +579,6 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                     throw new IncompleteCellException(line[0..count],
                           "Quote located in unquoted token");
         }
-        else static if(ErrorLevel == Malformed.ignore)
-            auto count = countUntil(line, sep, recordBreak);
 
         if(count == -1)
             count = line.length;
@@ -701,6 +753,18 @@ unittest
     catch(IncompleteCellException ice) 
     {
         assert(ice.partialData == "off a ");
+    }
+
+    str = "\"Kit Kat\" bar";
+
+    try 
+    {
+        csvNextToken(str);
+        assert(0);
+    }
+    catch(IncompleteCellException ice) 
+    {
+        assert(ice.partialData == "Kit Kat");
     }
 }
 
