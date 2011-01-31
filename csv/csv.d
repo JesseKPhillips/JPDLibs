@@ -102,9 +102,9 @@ unittest
     auto records = csvText(str);
 
     int count;
-    foreach (record; records)
+    foreach(record; records)
     {
-        foreach (cell; record)
+        foreach(cell; record)
         {
             count++;
         }
@@ -258,7 +258,6 @@ public:
 
         auto r = Record!(Range, ErrorLevel, Range, Separator)
             (_input, _separator, _quote, _recordBreak);
-        r.popFront();
 
         size_t colIndex;
         foreach(col; r)
@@ -290,7 +289,6 @@ public:
         {
             auto r = Record!(Range, ErrorLevel, Range, Separator)
                               (_input, _separator, _quote, _recordBreak);
-            r.popFront();
 
             Contents recordContentsype;
             if(indices.empty)
@@ -300,7 +298,7 @@ public:
                     auto token = r.front;
                     auto v = to!(U)(token);
                     recordContentsype.tupleof[i] = v;
-                    r.popFront ();
+                    r.popFront();
                 }
             }
             else 
@@ -325,7 +323,6 @@ public:
         {
             auto recordRange = Record!(Contents, ErrorLevel, Range, Separator)
                                     (_input, _separator, _quote, _recordBreak);
-            recordRange.popFront();
             return recordRange;
         }
     }
@@ -372,6 +369,7 @@ public:
         _separator = separator;
         _quote = quote;
         _recordBreak = recordBreak;
+        prime();
     }
 
     /**
@@ -393,12 +391,17 @@ public:
      */
     void popFront()
     {
+        assert(!empty, "Attempting to popFront() past end of Range");
         if(_input.empty || startsWith(_input, _recordBreak)) 
         {
             _empty = true;
             return;
         }
 
+        prime();
+    }
+
+    private void prime() {
         auto str = csvNextToken!(ErrorLevel, Range, Separator)
                                 (_input, _separator, _quote, _recordBreak);
         curContentsoken = to!Contents(str);
