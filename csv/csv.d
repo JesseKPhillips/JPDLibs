@@ -224,6 +224,7 @@ unittest
 struct RecordList(Contents = string,
                   Malformed ErrorLevel = Malformed.throwException, 
                   Range, Separator)
+               if(!is(Contents == class))
 {
 private:
     Range _input;
@@ -285,7 +286,7 @@ public:
     @property auto front()
     {
         assert(!empty);
-        static if(is(Contents == struct) || is(Contents == class))
+        static if(is(Contents == struct))
         {
             auto r = Record!(Range, ErrorLevel, Range, Separator)
                               (_input, _separator, _quote, _recordBreak);
@@ -351,7 +352,8 @@ public:
  */
 struct Record(Contents, Malformed ErrorLevel = Malformed.throwException,
               Range, Separator)
-             if(!is(Contents == class) && !is(Contents == struct)) {
+             if(!is(Contents == class) && !is(Contents == struct))
+{
 private:
     Range _input;
     Separator _separator;
