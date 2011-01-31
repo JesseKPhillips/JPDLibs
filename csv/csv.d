@@ -40,12 +40,13 @@
  */
 module csv;
 
-import std.array;
 import std.algorithm;
-import std.range;
+import std.array;
 import std.conv;
-import std.traits;
+import std.exception;
+import std.range;
 import std.stdio;
+import std.traits;
 import newadds;
 
 /**
@@ -84,6 +85,14 @@ auto csvText(Contents = string,
                       (data, ",", "\"", "\n");
 }
 
+auto csvText(Contents = string,
+             Malformed ErrorLevel = Malformed.throwException, Range)
+            (Range data, Range[] heading) if (isSomeString ! Range)
+{
+    return RecordList!(Contents, ErrorLevel, Range, string)
+                      (data, ",", "\"", "\n", heading);
+}
+
 deprecated alias csvText csv;
 
 // Test standard iteration over data.
@@ -116,19 +125,51 @@ unittest
     Layout ans[2];
     ans[0].name = "Hello";
     ans[0].value = 65;
-    ans[0].other = 663.63;
+    ans[0].other = 63.63;
     ans[1].name = "World";
-    ans[1].value = 65;
-    ans[1].other = 663.63;
+    ans[1].value = 123;
+    ans[1].other = 3673.562;
 
     auto records = csvText!Layout(str);
 
     int count;
     foreach (record; records)
     {
-        ans[count].name = record.name;
-        ans[count].value = record.value;
-        ans[count].other = record.other;
+        assert(ans[count].name == record.name);
+        assert(ans[count].value == record.value);
+        assert(ans[count].other == record.other);
+        count++;
+    }
+    assert(count == 2);
+}
+
+// Test struct & header interface
+unittest
+{
+    string str = "a,b,c\nHello,65,63.63\nWorld,123,3673.562";
+    struct Layout
+    {
+        int value;
+        double other;
+        string name;
+    }
+
+    auto records = csvText!Layout(str, ["b","c","a"]);
+
+    Layout ans[2];
+    ans[0].name = "Hello";
+    ans[0].value = 65;
+    ans[0].other = 63.63;
+    ans[1].name = "World";
+    ans[1].value = 123;
+    ans[1].other = 3673.562;
+
+    int count;
+    foreach (record; records)
+    {
+        assert(ans[count].name == record.name);
+        assert(ans[count].value == record.value);
+        assert(ans[count].other == record.other);
         count++;
     }
     assert(count == 2);
@@ -170,7 +211,7 @@ unittest
     {
         string a, b;
     }
-    foreach (record; csvText ! (Ans, Malformed.ignore) (str))
+    foreach(record; csvText!(Ans, Malformed.ignore) (str))
     {
         assert (record.a == "It is me \"Not here\"");
         assert (record.b == "In \"the\" sand");
@@ -180,7 +221,7 @@ unittest
 /**
  * Range which provides access to CSV Records and Tokens.
  */
-struct RecordList(Contents = string, 
+struct RecordList(Contents = string,
                   Malformed ErrorLevel = Malformed.throwException, 
                   Range, Separator)
 {
@@ -189,6 +230,7 @@ private:
     Separator _separator;
     Separator _quote;
     Separator _recordBreak;
+    size_t[] indices;
 public:
     /**
      */
@@ -203,6 +245,44 @@ public:
 
     /**
      */
+    this(Range input, Separator separator, Separator quote,
+         Separator recordBreak, Range[] colHeaders)
+    {
+        this(input, separator, quote, recordBreak);
+
+        size_t[Range] colToIndex;
+        foreach(i, h; colHeaders)
+        {
+            colToIndex[h] = size_t.max;
+        }
+
+        auto r = Record!(Range, ErrorLevel, Range, Separator)
+            (_input, _separator, _quote, _recordBreak);
+        r.popFront();
+
+        size_t colIndex;
+        foreach(col; r)
+        {
+            auto ptr = col in colToIndex;
+            if(ptr)
+                *ptr = colIndex;
+            colIndex++;
+        }
+
+        indices.length = colHeaders.length;
+        foreach(i, h; colHeaders)
+        {
+            immutable index = colToIndex[h];
+            static if(Malformed.throwException)
+                enforce(index < size_t.max,
+                        "Header not found: " ~ to!string(h));
+            indices[i] = index;
+        }
+        popFront();
+    }
+
+    /**
+     */
     @property auto front()
     {
         assert(!empty);
@@ -210,15 +290,33 @@ public:
         {
             auto r = Record!(Range, ErrorLevel, Range, Separator)
                               (_input, _separator, _quote, _recordBreak);
-            r.popFront ();
-            alias FieldTypeTuple ! (Contents) types;
+            r.popFront();
+
             Contents recordContentsype;
-            foreach (i, U; types)
+            if(indices.empty)
             {
-                auto token = r.front;
-                auto v = to!(U)(token);
-                recordContentsype.tupleof[i] = v;
-                r.popFront ();
+                foreach (i, U; FieldTypeTuple!(Contents))
+                {
+                    auto token = r.front;
+                    auto v = to!(U)(token);
+                    recordContentsype.tupleof[i] = v;
+                    r.popFront ();
+                }
+            }
+            else 
+            {
+                size_t colIndex;
+                foreach(colData; r)
+                {
+                    scope(exit) colIndex++;
+                    foreach(ti, ToType; FieldTypeTuple!(Contents))
+                    {
+                        if(indices[ti] == colIndex)
+                        {
+                            recordContentsype.tupleof[ti] = to!ToType(colData);
+                        }
+                    }
+                }
             }
 
             return recordContentsype;
@@ -227,7 +325,7 @@ public:
         {
             auto recordRange = Record!(Contents, ErrorLevel, Range, Separator)
                                     (_input, _separator, _quote, _recordBreak);
-            recordRange.popFront ();
+            recordRange.popFront();
             return recordRange;
         }
     }
