@@ -267,6 +267,7 @@ private:
     Separator _quote;
     Separator _recordBreak;
     size_t[] indices;
+    bool _empty;
     static if(is(Contents == struct))
         Contents recordContent;
     else
@@ -279,6 +280,9 @@ public:
         _separator = separator;
         _quote = quote;
         _recordBreak = recordBreak;
+        indices.length =  FieldTypeTuple!(Contents).length;
+        foreach(i, j; FieldTypeTuple!Contents)
+            indices[i] = i;
         prime();
     }
 
@@ -331,7 +335,7 @@ public:
 
     @property bool empty()
     {
-        return _input.empty;
+        return _empty;
     }
 
     void popFront()
@@ -342,42 +346,40 @@ public:
             skipOver(_input, _separator);
             csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak);
         }
+        if(_input.empty)
+            _empty=true;
         skipOver(_input, _recordBreak);
         prime();
     }
 
     void prime()
     {
-        if(_input.empty)
+        if(_empty)
             return;
 
         static if(is(Contents == struct))
         {
-            auto r = Record!(Range, ErrorLevel, Range, Separator)
-                              (_input, _separator, _quote, _recordBreak);
-
-            if(indices.empty)
-            {
-                foreach (i, U; FieldTypeTuple!(Contents))
+            size_t colIndex;
+            while(!_input.empty && !startsWith(_input, _recordBreak)) {
+                scope(exit) colIndex++;
+                auto colData = csvNextToken!(ErrorLevel, Range, Separator)
+                    (_input, _separator, _quote, _recordBreak);
+                skipOver(_input, _separator);
+                if(indices.length > 0) 
                 {
-                    auto token = r.front;
-                    auto v = to!(U)(token);
-                    recordContent.tupleof[i] = v;
-                    r.popFront();
-                }
-            }
-            else 
-            {
-                size_t colIndex;
-                foreach(colData; r)
-                {
-                    scope(exit) colIndex++;
                     foreach(ti, ToType; FieldTypeTuple!(Contents))
                     {
                         if(indices[ti] == colIndex)
                         {
                             recordContent.tupleof[ti] = to!ToType(colData);
                         }
+                    }
+                }
+                else
+                {
+                    foreach(ti, ToType; FieldTypeTuple!(Contents))
+                    {
+                        recordContent.tupleof[ti] = to!ToType(colData);
                     }
                 }
             }
