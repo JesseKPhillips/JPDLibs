@@ -267,6 +267,10 @@ private:
     Separator _quote;
     Separator _recordBreak;
     size_t[] indices;
+    static if(is(Contents == struct))
+        Contents recordContent;
+    else
+        Record!(Contents, ErrorLevel, Range, Separator) recordRange;
 public:
     this(Range input, Separator separator, Separator quote,
          Separator recordBreak)
@@ -275,12 +279,16 @@ public:
         _separator = separator;
         _quote = quote;
         _recordBreak = recordBreak;
+        prime();
     }
 
     this(Range input, Separator separator, Separator quote,
          Separator recordBreak, Range[] colHeaders)
     {
-        this(input, separator, quote, recordBreak);
+        _input = input;
+        _separator = separator;
+        _quote = quote;
+        _recordBreak = recordBreak;
 
         size_t[Range] colToIndex;
         foreach(i, h; colHeaders)
@@ -316,11 +324,38 @@ public:
     {
         assert(!empty);
         static if(is(Contents == struct))
+            return recordContent;
+        else
+            return recordRange;
+    }
+
+    @property bool empty()
+    {
+        return _input.empty;
+    }
+
+    void popFront()
+    {
+        assert(!empty, "Attempting to popFront() past end of Range");
+        while(!_input.empty && !startsWith(_input, _recordBreak)) 
+        {
+            skipOver(_input, _separator);
+            csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak);
+        }
+        skipOver(_input, _recordBreak);
+        prime();
+    }
+
+    void prime()
+    {
+        if(_input.empty)
+            return;
+
+        static if(is(Contents == struct))
         {
             auto r = Record!(Range, ErrorLevel, Range, Separator)
                               (_input, _separator, _quote, _recordBreak);
 
-            Contents recordContent;
             if(indices.empty)
             {
                 foreach (i, U; FieldTypeTuple!(Contents))
@@ -346,30 +381,12 @@ public:
                     }
                 }
             }
-
-            return recordContent;
         }
         else
         {
-            auto recordRange = Record!(Contents, ErrorLevel, Range, Separator)
+            recordRange = Record!(Contents, ErrorLevel, Range, Separator)
                                     (_input, _separator, _quote, _recordBreak);
-            return recordRange;
         }
-    }
-
-    @property bool empty()
-    {
-        return _input.empty;
-    }
-
-    void popFront()
-    {
-        while(!_input.empty && !startsWith(_input, _recordBreak)) 
-        {
-            skipOver(_input, _separator);
-            csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak);
-        }
-        skipOver(_input, _recordBreak);
     }
 }
 
