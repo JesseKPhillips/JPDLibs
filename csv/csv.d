@@ -75,7 +75,7 @@ import std.stdio;
  *       IncompleteCellToken When data is shown to not be complete.
  */
 auto csvText(Contents = string, string ErrorLevel = "Checked", Range)(Range data) if(isSomeString!Range) {
-	return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)(data, ',', '"', '\n');
+	return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)(data, ',', '"');
 }
 
 deprecated alias csvText csv;
@@ -167,16 +167,23 @@ private:
 	Range _input;
 	Separator _separator;
 	Separator _quote;
-	Separator _recordBreak;
+    bool _empty;
+    static if(is(Contents == struct))
+    {
+        Contents recordContent;
+        Record!(Range, ErrorLevel, Range, Separator) recordRange;
+    }
+    else
+        Record!(Contents, ErrorLevel, Range, Separator) recordRange;
 public:
 	/**
 	 */
-	this(Range input, Separator separator, Separator quote, Separator recordBreak)
+	this(Range input, Separator separator, Separator quote)
 	{
 		_input = input;
 		_separator = separator;
 		_quote = quote;
-		_recordBreak = recordBreak;
+        prime();
 	}
 
 	/**
@@ -184,22 +191,10 @@ public:
 	@property auto front()
 	{
 		assert(!empty);
-		static if(is(Contents == struct) || is(Contents == class)) {
-			auto r = Record!(Range,ErrorLevel,Range,Separator)(_input, _separator, _quote, _recordBreak);
-			r.popFront();
-			alias FieldTypeTuple!(Contents) types;
-			Contents recordContentsype;
-			foreach(i, U; types) {
-				auto token = csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak,false);
-				auto v = to!(U)(token);
-				recordContentsype.tupleof[i] = v;
-			}
-
-			return recordContentsype;
+		static if(is(Contents == struct)) {
+			return recordContent;
 		} else {
-			auto r = Record!(Contents,ErrorLevel,Range,Separator)(_input, _separator, _quote, _recordBreak);
-			r.popFront();
-			return r;
+			return recordRange;
 		}
 	}
 
@@ -207,17 +202,60 @@ public:
 	 */
 	@property bool empty()
 	{
-		return _input.empty;
+		return _empty;
 	}
 
 	/**
 	 */
 	void popFront()
 	{
-		while(csvNextToken!ErrorLevel(_input, _separator,_quote,_recordBreak,false) !is null) {}
-		if(!_input.empty && _input.front == _recordBreak)
-			_input.popFront();
+        while(!_input.empty && _input.front != '\n' && _input.front != '\r')
+        {
+            csvNextToken!(ErrorLevel, Range, Separator)
+                         (_input, _separator, _quote,false);
+            if(!_input.empty)
+                if(_input.front == _separator)
+                    _input.popFront();
+        }
+        version(none) {
+            while(!recordRange.empty)
+            {
+                recordRange.popFront();
+            }
+        }
+        if(_input.empty)
+            _empty = true;
+		if(!_input.empty)
+        {
+           if(_input.front == '\r') 
+           {
+               _input.popFront();
+               if(_input.front == '\n') 
+                   _input.popFront();
+           }
+           else if(_input.front == '\n') 
+               _input.popFront();
+        }
+        prime();
 	}
+    
+    void prime()
+    {
+        if(_empty)
+            return;
+        recordRange = typeof(recordRange)
+                             (_input, _separator, _quote);
+		static if(is(Contents == struct)) {
+			alias FieldTypeTuple!(Contents) types;
+			foreach(i, U; types) {
+				auto token = csvNextToken!ErrorLevel(_input, _separator,_quote,false);
+				auto v = to!(U)(token);
+				recordContent.tupleof[i] = v;
+                if(!_input.empty && _input.front == _separator)
+                    _input.popFront();
+			}
+        }
+    }
 }
 
 /**
@@ -227,18 +265,17 @@ private:
 	Range _input;
 	Separator _separator;
 	Separator _quote;
-	Separator _recordBreak;
 	Contents curContentsoken;
 	bool _empty;
 public:
 	/**
 	 */
-	this(ref Range input, Separator separator, Separator quote, Separator recordBreak)
+	this(ref Range input, Separator separator, Separator quote)
 	{
 		_input = input;
 		_separator = separator;
 		_quote = quote;
-		_recordBreak = recordBreak;
+        prime();
 	}
 
 	/**
@@ -260,40 +297,62 @@ public:
 	 */
 	void popFront()
 	{
-		auto str = csvNextToken!(ErrorLevel, Range, Separator)(_input, _separator, _quote, _recordBreak,false);
-		if(str is null) {
-			_empty = true;
-			return;
-		}
+        //Record is complete when input
+        // is empty or starts with record break
+        if(_input.empty
+           || _input.front == '\n' 
+           || _input.front == '\r')
+        {
+            _empty = true;
+            return;
+        }
+
+        // Separator is left on the end of input from the last call. 
+        // This cannot be moved to after the call to csvNextToken as 
+        // there may be an empty record after it.
+        if(_input.front == _separator)
+            _input.popFront();
+
+        prime();
+	}
+
+    void prime() {
+		auto str = csvNextToken!(ErrorLevel, Range, Separator)
+                                (_input, _separator, _quote,false);
 
 		curContentsoken = to!Contents(str);
-	}
+    }
 }
 
 /**
  * Lower level control over parsing CSV. At this time it is not ready for
  * public consumption.
  *
- * The expected use of this would be to create a parser where
- * how the data is separated changes as it is being read. And
+ * The expected use of this would be to create a parser. And
  * may also be useful when handling errors within a CSV file.
  *
- * This function consumes the input and will not consume or surpass
- * the recordBreak.
+ * This function consumes the input. After each call the input will
+ * start with either a separator or record break (\n, \r\n, \r) which 
+ * must be removed for subsequent calls.
  *
  * Returns:
  *        The next CSV token.
- *        null if there is no data or are at the end of the record.
  */
 private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = ElementType!Range)
                           (ref Range line, Separator sep = ',',
-                           Separator quote = '"', Separator recordBreak = '\n',
+                           Separator quote = '"',
                            bool startQuoted = false) {
 	bool quoted = startQuoted;
 	bool escQuote;
-	if(line.empty || line.front == recordBreak)
-		return null;
-	Range ans = "";
+	if(line.empty)
+		return line;
+    
+	Range ans;
+
+    if(line.front == '\n')
+		return ans;
+    if(line.front == '\r')
+		return ans;
 
 	if(line.front == quote) {
 		quoted = true;
@@ -303,17 +362,13 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 	while(!line.empty) {
 		assert(!(quoted && escQuote));
 		if(!quoted) {
-			if(line.front == sep) { // When not quoted the token ends at sep
-				if(line.length > 1)
-					line.popFront();
+            // When not quoted the token ends at sep
+			if(line.front == sep) 
 				break;
-			}
-			if(line.front == recordBreak) {
-				static if(isSomeChar!Separator)
-					if(ans.back == '\r')
-						ans.popBack();
+			if(line.front == '\r')
 				break;
-			}
+			if(line.front == '\n')
+				break;
 		}
 		if(!quoted && !escQuote) {
 			if(line.front == quote) {
@@ -347,10 +402,8 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 				}
 			} else {
 				// Quoted, non-quote character
-				static if(isSomeChar!Separator)
-					if(line.front != '\r')
-						if(escQuote) {
-							throw new IncompleteCellException(ans, "Content continues after end quote, needs to be escaped.");
+                if(escQuote) {
+                    throw new IncompleteCellException(ans, "Content continues after end quote, needs to be escaped.");
 						}
 				ans ~= line.front;
 			}
@@ -358,7 +411,7 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 		line.popFront();
 	}
 
-	if(quoted && (line.empty || line.front == recordBreak))
+	if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
 		throw new IncompleteCellException(ans,
 		          "Data continues on future lines or trailing quote");
 
@@ -379,68 +432,70 @@ class IncompleteCellException : Exception {
 
 // Test csvNextToken on simplest form and correct format.
 unittest {
-	string str = "Hello,65,63.63\nWorld,123,3673.562";
+    string str = "Hello,65,63.63\nWorld,123,3673.562";
 
-	auto a = csvNextToken(str);
-	assert(a == "Hello");
-	assert(str == "65,63.63\nWorld,123,3673.562");
+    auto a = csvNextToken(str);
+    assert(a == "Hello");
+    assert(str == ",65,63.63\nWorld,123,3673.562");
 
-	a = csvNextToken(str);
-	assert(a == "65");
-	assert(str == "63.63\nWorld,123,3673.562");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "65");
+    assert(str == ",63.63\nWorld,123,3673.562");
 
-	a = csvNextToken(str);
-	assert(a == "63.63");
-	assert(str == "\nWorld,123,3673.562");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "63.63");
+    assert(str == "\nWorld,123,3673.562");
 
-	str.popFront();
-	a = csvNextToken(str);
-	assert(a == "World");
-	assert(str == "123,3673.562");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "World");
+    assert(str == ",123,3673.562");
 
-	a = csvNextToken(str);
-	assert(a == "123");
-	assert(str == "3673.562");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "123");
+    assert(str == ",3673.562");
 
-	a = csvNextToken(str);
-	assert(a == "3673.562");
-	assert(str == "");
-
-	a = csvNextToken(str);
-	assert(a == "");
-	assert(a is null);
-	assert(a.empty);
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "3673.562");
+    assert(str == "");
 }
 
 // Test quoted tokens
 unittest {
-	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
+    string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
 
-	auto a = csvNextToken(str);
-	assert(a == "Hello");
-	assert(str == `World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here");
+    auto a = csvNextToken(str);
+    assert(a == "Hello");
+    assert(str == `,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "World");
-	assert(str == `"Hi ""There""","",` ~ "\"It is\nme\"\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "World");
+    assert(str == `,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "Hi \"There\"");
-	assert(str == `"",` ~ "\"It is\nme\"\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "Hi \"There\"");
+    assert(str == `,"",` ~ "\"It is\nme\"\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "");
-	assert(a !is null);
-	assert(str == "\"It is\nme\"\nNot here");
-	
-	a = csvNextToken(str);
-	assert(a == "It is\nme");
-	assert(str == "\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "");
+    assert(str == ",\"It is\nme\"\nNot here");
+    
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "It is\nme");
+    assert(str == "\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "");
-	assert(a is null);
-	assert(str == "\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "Not here");
+    assert(str == "");
 }
 
 // Test empty data is pulled at end of record.
@@ -452,7 +507,6 @@ unittest {
 
 	a = csvNextToken(str);
 	assert(a == "");
-	assert(a !is null);
 }
 
 // Test exceptions
@@ -481,6 +535,7 @@ unittest {
 
 	auto a = csvNextToken!"Unchecked"(str);
 	assert(a == "Break me");
+    str.popFront();
 	a = csvNextToken!"Unchecked"(str);
 	assert(a == " off a \"Kit Kat\" bar");
 }
@@ -488,78 +543,69 @@ unittest {
 
 // Test modifying token separators
 unittest {
-	string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/-Not here";
+	string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here";
 
-	auto a = csvNextToken(str, '|','/','-');
+	auto a = csvNextToken(str, '|','/');
 	assert(a == "Hello");
-	assert(str == `World|/Hi ""There""/|//|` ~ "/It is\nme/-Not here");
+	assert(str == `|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
 
-	a = csvNextToken(str, '|','/','-');
+    str.popFront();
+	a = csvNextToken(str, '|','/');
 	assert(a == "World");
-	assert(str == `/Hi ""There""/|//|` ~ "/It is\nme/-Not here");
+	assert(str == `|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
 
-	a = csvNextToken(str, '|','/','-');
+    str.popFront();
+	a = csvNextToken(str, '|','/');
 	assert(a == `Hi ""There""`);
-	assert(str == `//|` ~ "/It is\nme/-Not here");
+	assert(str == `|//|` ~ "/It is\nme/\nNot here");
 
-	a = csvNextToken(str, '|','/','-');
+    str.popFront();
+	a = csvNextToken(str, '|','/');
 	assert(a == "");
-	assert(a !is null);
-	assert(str == "/It is\nme/-Not here");
+	assert(str == "|/It is\nme/\nNot here");
 	
-	a = csvNextToken(str, '|','/','-');
+    str.popFront();
+	a = csvNextToken(str, '|','/');
 	assert(a == "It is\nme");
-	assert(str == "-Not here");
+	assert(str == "\nNot here");
 
-	a = csvNextToken(str, '|','/','-');
+	a = csvNextToken(str, '|','/');
 	assert(a == "");
-	assert(a is null);
-	assert(str == "-Not here");
-}
-
-// Test using csvNextToken as a splitter with "quoting"
-unittest {
-	string str = `Hello|World|/Hi ""There""/|//|` ~ "It is\nme-Not here";
-
-	auto a = csvNextToken(str, '|','/','\0');
-	a = csvNextToken(str, '|','/','\0');
-	a = csvNextToken(str, '|','/','\0');
-	a = csvNextToken(str, '|','/','\0');
-	a = csvNextToken(str, '|','/','\0');
-	assert(a == "It is\nme-Not here");
-	assert(str == "");
-
-	a = csvNextToken(str, '|','/','\0');
-	assert(a is null);
+	assert(str == "\nNot here");
 }
 
 // Test Windows CSV files
 unittest {
-	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here";
+    string str = `Hello,World,"Hi ""There""","",` 
+        ~ "\"It is\r\nme\"\r\nNot here";
 
-	auto a = csvNextToken(str);
-	assert(a == "Hello");
-	assert(str == `World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
+    auto a = csvNextToken(str);
+    assert(a == "Hello");
+    assert(str == `,World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "World");
-	assert(str == `"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "World");
+    assert(str == `,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "Hi \"There\"");
-	assert(str == `"",` ~ "\"It is\r\nme\"\r\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "Hi \"There\"");
+    assert(str == `,"",` ~ "\"It is\r\nme\"\r\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "");
-	assert(a !is null);
-	assert(str == "\"It is\r\nme\"\r\nNot here");
-	
-	a = csvNextToken(str);
-	assert(a == "It is\r\nme");
-	assert(str == "\nNot here");
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "");
+    assert(str == ",\"It is\r\nme\"\r\nNot here");
+    
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "It is\r\nme");
+    assert(str == "\r\nNot here");
 
-	a = csvNextToken(str);
-	assert(a == "");
-	assert(a is null);
-	assert(str == "\nNot here");
+    str.popFront();
+    str.popFront();
+    a = csvNextToken(str);
+    assert(a == "Not here");
+    assert(str == "");
 }
