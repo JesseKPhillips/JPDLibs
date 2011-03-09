@@ -439,6 +439,7 @@ public:
             _empty = true;
             return;
         }
+        skipOver(_input, _separator);
 
         prime();
     }
@@ -447,7 +448,6 @@ public:
         auto str = csvNextToken!(ErrorLevel, Range, Separator)
                                 (_input, _separator, _quote, _recordBreak);
         curContent = to!Contents(str);
-        skipOver(_input, _separator);
     }
 }
 
