@@ -144,7 +144,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
 
 		try {
 			ians = to!(int)(ans);
-		} catch(ConvError ce) {
+		} catch(ConvException ce) {
 			bool found;
 			i = 0;
 			foreach(o; options) {
