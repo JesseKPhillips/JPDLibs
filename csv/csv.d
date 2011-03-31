@@ -244,7 +244,7 @@ public:
         if(_empty)
             return;
         recordRange = typeof(recordRange)
-                             (_input, _separator, _quote);
+                             (&_input, _separator, _quote);
 		static if(is(Contents == struct)) {
 			alias FieldTypeTuple!(Contents) types;
 			foreach(i, U; types) {
@@ -262,7 +262,7 @@ public:
  */
 struct Record(Contents, string ErrorLevel = "Checked", Range, Separator) if(!is(Contents == class) && !is(Contents == struct)) {
 private:
-	Range _input;
+	Range* _input;
 	Separator _separator;
 	Separator _quote;
 	Contents curContentsoken;
@@ -270,7 +270,7 @@ private:
 public:
 	/**
 	 */
-	this(ref Range input, Separator separator, Separator quote)
+	this(Range* input, Separator separator, Separator quote)
 	{
 		_input = input;
 		_separator = separator;
@@ -299,9 +299,9 @@ public:
 	{
         //Record is complete when input
         // is empty or starts with record break
-        if(_input.empty
-           || _input.front == '\n' 
-           || _input.front == '\r')
+        if((*_input).empty
+           || (*_input).front == '\n' 
+           || (*_input).front == '\r')
         {
             _empty = true;
             return;
@@ -310,15 +310,15 @@ public:
         // Separator is left on the end of input from the last call. 
         // This cannot be moved to after the call to csvNextToken as 
         // there may be an empty record after it.
-        if(_input.front == _separator)
-            _input.popFront();
+        if((*_input).front == _separator)
+            (*_input).popFront();
 
         prime();
 	}
 
     void prime() {
 		auto str = csvNextToken!(ErrorLevel, Range, Separator)
-                                (_input, _separator, _quote,false);
+                                (*_input, _separator, _quote,false);
 
 		curContentsoken = to!Contents(str);
     }
