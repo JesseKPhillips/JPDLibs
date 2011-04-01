@@ -74,7 +74,7 @@ import std.stdio;
  * Throws:
  *       IncompleteCellToken When data is shown to not be complete.
  */
-auto csvText(Contents = string, string ErrorLevel = "Checked", Range)(Range data) if(isSomeString!Range) {
+auto csvText(Contents = string, Malformed ErrorLevel = Malformed.throwException, Range)(Range data) if(isSomeString!Range) {
 	return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)(data, ',', '"');
 }
 
@@ -142,7 +142,7 @@ unittest {
 // Test unchecked read
 unittest {
 	string str = "It is me \"Not here\"";
-    auto records = csvText!(string,"Unchecked")(str);
+    auto records = csvText!(string, Malformed.ignore)(str);
 	foreach(record; records) {
 		foreach(cell; record) {
 			assert(cell == "It is me \"Not here\"");
@@ -153,7 +153,7 @@ unittest {
 	struct Ans {
 		string a,b;
 	}
-    auto records2 = csvText!(Ans,"Unchecked")(str);
+    auto records2 = csvText!(Ans, Malformed.ignore)(str);
 	foreach(record; records2) {
 			assert(record.a == "It is me \"Not here\"");
 			assert(record.b == "In \"the\" sand");
@@ -163,7 +163,7 @@ unittest {
 /**
  * Range which provides access to CSV Records and Tokens.
  */
-struct RecordList(Contents = string, string ErrorLevel = "Checked", Range = string, Separator = dchar)
+struct RecordList(Contents = string, Malformed ErrorLevel = Malformed.throwException, Range = string, Separator = dchar)
 {
 private:
 	Range _input;
@@ -258,7 +258,7 @@ public:
 
 /**
  */
-struct Record(Contents, string ErrorLevel = "Checked", Range, Separator) if(!is(Contents == class) && !is(Contents == struct)) {
+struct Record(Contents, Malformed ErrorLevel = Malformed.throwException, Range, Separator) if(!is(Contents == class) && !is(Contents == struct)) {
 private:
 	Range* _input;
 	Separator _separator;
@@ -336,7 +336,7 @@ public:
  * Returns:
  *        The next CSV token.
  */
-private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = ElementType!Range)
+private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException, Range, Separator = ElementType!Range)
                           (ref Range line, Separator sep = ',',
                            Separator quote = '"',
                            bool startQuoted = false) {
@@ -371,13 +371,10 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 		if(!quoted && !escQuote) {
 			if(line.front == quote) {
 				// Not quoted, but quote found
-				static if(ErrorLevel == "Checked")
+				static if(ErrorLevel == Malformed.throwException)
 					throw new IncompleteCellException(ans, "Quote located in unquoted token");
-				else static if(ErrorLevel == "Unchecked")
+				else static if(ErrorLevel == Malformed.ignore)
 					ans ~= quote;
-				else {
-					static assert(0, "Unknown error level " ~ ErrorLevel);
-				}
 			} else {
 				// Not quoted, non-quote character
 				ans ~= line.front;
@@ -414,6 +411,17 @@ private Range csvNextToken(string ErrorLevel = "Checked", Range, Separator = Ele
 		          "Data continues on future lines or trailing quote");
 
 	return ans;
+}
+
+/**
+* Determines the behavior for when an error is detected.
+*/
+enum Malformed
+{
+    ///
+    ignore,
+    ///
+    throwException
 }
 
 /**
@@ -531,10 +539,10 @@ unittest {
 
 	str = "Break me, off a \"Kit Kat\" bar";
 
-	auto a = csvNextToken!"Unchecked"(str);
+	auto a = csvNextToken!(Malformed.ignore)(str);
 	assert(a == "Break me");
     str.popFront();
-	a = csvNextToken!"Unchecked"(str);
+	a = csvNextToken!(Malformed.ignore)(str);
 	assert(a == " off a \"Kit Kat\" bar");
 }
 
