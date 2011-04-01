@@ -142,7 +142,8 @@ unittest {
 // Test unchecked read
 unittest {
 	string str = "It is me \"Not here\"";
-	foreach(record; csvText!(string,"Unchecked")(str)) {
+    auto records = csvText!(string,"Unchecked")(str);
+	foreach(record; records) {
 		foreach(cell; record) {
 			assert(cell == "It is me \"Not here\"");
 		}
@@ -152,7 +153,8 @@ unittest {
 	struct Ans {
 		string a,b;
 	}
-	foreach(record; csvText!(Ans,"Unchecked")(str)) {
+    auto records2 = csvText!(Ans,"Unchecked")(str);
+	foreach(record; records2) {
 			assert(record.a == "It is me \"Not here\"");
 			assert(record.b == "In \"the\" sand");
 	}
@@ -186,6 +188,10 @@ public:
         prime();
 	}
 
+    this(this) {
+        recordRange._input = &_input;
+    }
+
 	/**
 	 */
 	@property auto front()
@@ -209,20 +215,11 @@ public:
 	 */
 	void popFront()
 	{
-        while(!_input.empty && _input.front != '\n' && _input.front != '\r')
+        while(!recordRange.empty)
         {
-            csvNextToken!(ErrorLevel, Range, Separator)
-                         (_input, _separator, _quote,false);
-            if(!_input.empty)
-                if(_input.front == _separator)
-                    _input.popFront();
+            recordRange.popFront();
         }
-        version(none) {
-            while(!recordRange.empty)
-            {
-                recordRange.popFront();
-            }
-        }
+
         if(_input.empty)
             _empty = true;
 		if(!_input.empty)
@@ -248,11 +245,12 @@ public:
 		static if(is(Contents == struct)) {
 			alias FieldTypeTuple!(Contents) types;
 			foreach(i, U; types) {
-				auto token = csvNextToken!ErrorLevel(_input, _separator,_quote,false);
+                auto token = recordRange.front();
 				auto v = to!(U)(token);
 				recordContent.tupleof[i] = v;
                 if(!_input.empty && _input.front == _separator)
                     _input.popFront();
+                recordRange.popFront();
 			}
         }
     }
