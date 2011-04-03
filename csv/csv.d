@@ -41,10 +41,11 @@
 module csv;
 
 import std.array;
-import std.range;
 import std.conv;
-import std.traits;
+import std.exception;
+import std.range;
 import std.stdio;
+import std.traits;
 
 /**
  * Builds a RecordList range for iterating over tokens found in data.
@@ -80,6 +81,15 @@ auto csvText(Contents = string, Malformed ErrorLevel
 {
     return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
         (data, ',', '"');
+}
+
+/// Ditto
+auto csvText(Contents = string, Malformed ErrorLevel 
+             = Malformed.throwException, Range)(Range data, string[] heading)
+    if(isSomeString!Range)
+{
+    return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
+        (data, ',', '"', heading);
 }
 
 deprecated alias csvText csv;
@@ -151,6 +161,38 @@ unittest
     assert(count == 3);
 }
 
+// Test struct & header interface
+unittest
+{
+    string str = "a,b,c\nHello,65,63.63\nWorld,123,3673.562";
+    struct Layout
+    {
+        int value;
+        double other;
+        string name;
+    }
+
+    auto records = csvText!Layout(str, ["b","c","a"]);
+
+    Layout ans[2];
+    ans[0].name = "Hello";
+    ans[0].value = 65;
+    ans[0].other = 63.63;
+    ans[1].name = "World";
+    ans[1].value = 123;
+    ans[1].other = 3673.562;
+
+    int count;
+    foreach (record; records)
+    {
+        assert(ans[count].name == record.name);
+        assert(ans[count].value == record.value);
+        assert(ans[count].other == record.other);
+        count++;
+    }
+    assert(count == 2);
+}
+
 // Test unchecked read
 unittest
 {
@@ -200,6 +242,7 @@ private:
     Range _input;
     Separator _separator;
     Separator _quote;
+    size_t[] indices;
     bool _empty;
     static if(is(Contents == struct))
     {
@@ -216,7 +259,48 @@ public:
         _input = input;
         _separator = separator;
         _quote = quote;
+        
+        indices.length =  FieldTypeTuple!(Contents).length;
+        foreach(i, j; FieldTypeTuple!Contents)
+            indices[i] = i;
         prime();
+    }
+
+    this(Range input, Separator separator, Separator quote, string[] colHeaders)
+    {
+        _input = input;
+        _separator = separator;
+        _quote = quote;
+
+        size_t[string] colToIndex;
+        foreach(i, h; colHeaders)
+        {
+            colToIndex[h] = size_t.max;
+        }
+
+        auto r = Record!(Range, ErrorLevel, Range, Separator)
+            (&_input, _separator, _quote);
+
+        size_t colIndex;
+        foreach(col; r)
+        {
+            auto ptr = col in colToIndex;
+            if(ptr)
+                *ptr = colIndex;
+            colIndex++;
+        }
+
+        indices.length = colHeaders.length;
+        foreach(i, h; colHeaders)
+        {
+            immutable index = colToIndex[h];
+            static if(!Malformed.ignore)
+                enforce(index < size_t.max,
+                        "Header not found: " ~ to!string(h));
+            indices[i] = index;
+        }
+        
+        popFront();
     }
 
     this(this)
@@ -282,15 +366,28 @@ public:
                              (&_input, _separator, _quote);
         static if(is(Contents == struct))
         {
-            alias FieldTypeTuple!(Contents) types;
-            foreach(i, U; types) {
-                auto token = recordRange.front();
-                auto v = to!(U)(token);
-                recordContent.tupleof[i] = v;
-                if(!_input.empty && _input.front == _separator)
-                    _input.popFront();
-                recordRange.popFront();
+            size_t colIndex;
+            foreach(colData; recordRange) {
+                scope(exit) colIndex++;
+                if(indices.length > 0) 
+                {
+                    foreach(ti, ToType; FieldTypeTuple!(Contents))
+                    {
+                        if(indices[ti] == colIndex)
+                        {
+                            recordContent.tupleof[ti] = to!ToType(colData);
+                        }
+                    }
+                }
+                else
+                {
+                    foreach(ti, ToType; FieldTypeTuple!(Contents))
+                    {
+                        recordContent.tupleof[ti] = to!ToType(colData);
+                    }
+                }
             }
+            
         }
     }
 }
