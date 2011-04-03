@@ -12,10 +12,10 @@
  * 
  * int count;
  * foreach(record; records) {
- * 	foreach(cell; record) {
- * 		assert(ans[count] == cell);
- * 		count++;
- * 	}
+ *    foreach(cell; record) {
+ *        assert(ans[count] == cell);
+ *        count++;
+ *    }
  * }
  * -------
  * 
@@ -24,17 +24,17 @@
  * -------
  * string str = "Hello,65,63.63\nWorld,123,3673.562";
  * struct Layout {
- * 	string name;
- * 	int value;
- * 	double other;
+ *     string name;
+ *     int value;
+ *     double other;
  * }
  * 
  * auto records = csvText!Layout(str);
  * 
  * foreach(record; records) {
- * 	writeln(record.name);
- * 	writeln(record.value);
- * 	writeln(record.other);
+ *     writeln(record.name);
+ *     writeln(record.value);
+ *     writeln(record.other);
  * }
  * -------
  */
@@ -58,10 +58,10 @@ import std.stdio;
  * 
  * int count;
  * foreach(record; records) {
- * 	foreach(cell; record) {
- * 		assert(ans[count] == cell);
- * 		count++;
- * 	}
+ *     foreach(cell; record) {
+ *         assert(ans[count] == cell);
+ *         count++;
+ *     }
  * }
  * -------
  *
@@ -74,101 +74,119 @@ import std.stdio;
  * Throws:
  *       IncompleteCellToken When data is shown to not be complete.
  */
-auto csvText(Contents = string, Malformed ErrorLevel = Malformed.throwException, Range)(Range data) if(isSomeString!Range) {
-	return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)(data, ',', '"');
+auto csvText(Contents = string, Malformed ErrorLevel 
+             = Malformed.throwException, Range)(Range data)
+    if(isSomeString!Range)
+{
+    return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
+        (data, ',', '"');
 }
 
 deprecated alias csvText csv;
 
 // Test standard iteration over data.
-unittest {
-	string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
-	auto records = csvText(str);
-
-	int count;
-	foreach(record; records) {
-		foreach(cell; record) {
-			count++;
-		}
-	}
-	assert(count == 6);
+unittest
+{
+    string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
+    auto records = csvText(str);
+    
+    int count;
+    foreach(record; records)
+    {
+        foreach(cell; record)
+        {
+            count++;
+        }
+    }
+    assert(count == 6);
 }
 
 // Test structure conversion interface.
 unittest {
-	string str = "Hello,65,63.63\nWorld,123,3673.562";
-	struct Layout {
-		string name;
-		int value;
-		double other;
-	}
+    string str = "Hello,65,63.63\nWorld,123,3673.562";
+    struct Layout
+    {
+        string name;
+        int value;
+        double other;
+    }
 
-	Layout ans[2];
-	ans[0].name = "Hello";
-	ans[0].value = 65;
-	ans[0].other = 663.63;
-	ans[1].name = "World";
-	ans[1].value = 65;
-	ans[1].other = 663.63;
+    Layout ans[2];
+    ans[0].name = "Hello";
+    ans[0].value = 65;
+    ans[0].other = 663.63;
+    ans[1].name = "World";
+    ans[1].value = 65;
+    ans[1].other = 663.63;
 
-	auto records = csvText!Layout(str);
+    auto records = csvText!Layout(str);
 
-	int count;
-	foreach(record; records) {
-		ans[count].name = record.name;
-		ans[count].value = record.value;
-		ans[count].other = record.other;
-		count++;
-	}
-	assert(count == 2);
+    int count;
+    foreach(record; records)
+    {
+        ans[count].name = record.name;
+        ans[count].value = record.value;
+        ans[count].other = record.other;
+        count++;
+    }
+    assert(count == 2);
 }
 
 // Test data conversion interface
-unittest {
-	string str = `76,26,22`;
-	int[] ans = [76,26,22];
-	auto records = csvText!int(str);
+unittest
+{
+    string str = `76,26,22`;
+    int[] ans = [76,26,22];
+    auto records = csvText!int(str);
 
-	int count;
-	foreach(record; records) {
-		foreach(cell; record) {
-			assert(ans[count] == cell);
-			count++;
-		}
-	}
-	assert(count == 3);
+    int count;
+    foreach(record; records)
+    {
+        foreach(cell; record)
+        {
+            assert(ans[count] == cell);
+            count++;
+        }
+    }
+    assert(count == 3);
 }
 
 // Test unchecked read
-unittest {
-	string str = "It is me \"Not here\"";
+unittest
+{
+    string str = "It is me \"Not here\"";
     auto records = csvText!(string, Malformed.ignore)(str);
-	foreach(record; records) {
-		foreach(cell; record) {
-			assert(cell == "It is me \"Not here\"");
-		}
-	}
+    foreach(record; records)
+    {
+        foreach(cell; record)
+        {
+            assert(cell == "It is me \"Not here\"");
+        }
+    }
 
-	str = "It is me \"Not here\",In \"the\" sand";
-	struct Ans {
-		string a,b;
-	}
+    str = "It is me \"Not here\",In \"the\" sand";
+    struct Ans
+    {
+        string a,b;
+    }
     auto records2 = csvText!(Ans, Malformed.ignore)(str);
-	foreach(record; records2) {
-			assert(record.a == "It is me \"Not here\"");
-			assert(record.b == "In \"the\" sand");
-	}
+    foreach(record; records2)
+    {
+            assert(record.a == "It is me \"Not here\"");
+            assert(record.b == "In \"the\" sand");
+    }
 }
 
 /**
  * Range which provides access to CSV Records and Tokens.
  */
-struct RecordList(Contents = string, Malformed ErrorLevel = Malformed.throwException, Range = string, Separator = dchar)
+struct RecordList(Contents, Malformed ErrorLevel 
+                  = Malformed.throwException, Range, Separator)
 {
 private:
-	Range _input;
-	Separator _separator;
-	Separator _quote;
+    Range _input;
+    Separator _separator;
+    Separator _quote;
     bool _empty;
     static if(is(Contents == struct))
     {
@@ -178,43 +196,47 @@ private:
     else
         Record!(Contents, ErrorLevel, Range, Separator) recordRange;
 public:
-	/**
-	 */
-	this(Range input, Separator separator, Separator quote)
-	{
-		_input = input;
-		_separator = separator;
-		_quote = quote;
+    /**
+     */
+    this(Range input, Separator separator, Separator quote)
+    {
+        _input = input;
+        _separator = separator;
+        _quote = quote;
         prime();
-	}
+    }
 
-    this(this) {
+    this(this)
+    {
         recordRange._input = &_input;
     }
 
-	/**
-	 */
-	@property auto front()
-	{
-		assert(!empty);
-		static if(is(Contents == struct)) {
-			return recordContent;
-		} else {
-			return recordRange;
-		}
-	}
+    /**
+     */
+    @property auto front()
+    {
+        assert(!empty);
+        static if(is(Contents == struct))
+        {
+            return recordContent;
+        }
+        else
+        {
+            return recordRange;
+        }
+    }
 
-	/**
-	 */
-	@property bool empty()
-	{
-		return _empty;
-	}
+    /**
+     */
+    @property bool empty()
+    {
+        return _empty;
+    }
 
-	/**
-	 */
-	void popFront()
-	{
+    /**
+     */
+    void popFront()
+    {
         while(!recordRange.empty)
         {
             recordRange.popFront();
@@ -222,7 +244,7 @@ public:
 
         if(_input.empty)
             _empty = true;
-		if(!_input.empty)
+        if(!_input.empty)
         {
            if(_input.front == '\r') 
            {
@@ -234,7 +256,7 @@ public:
                _input.popFront();
         }
         prime();
-	}
+    }
     
     void prime()
     {
@@ -242,59 +264,62 @@ public:
             return;
         recordRange = typeof(recordRange)
                              (&_input, _separator, _quote);
-		static if(is(Contents == struct)) {
-			alias FieldTypeTuple!(Contents) types;
-			foreach(i, U; types) {
+        static if(is(Contents == struct))
+        {
+            alias FieldTypeTuple!(Contents) types;
+            foreach(i, U; types) {
                 auto token = recordRange.front();
-				auto v = to!(U)(token);
-				recordContent.tupleof[i] = v;
+                auto v = to!(U)(token);
+                recordContent.tupleof[i] = v;
                 if(!_input.empty && _input.front == _separator)
                     _input.popFront();
                 recordRange.popFront();
-			}
+            }
         }
     }
 }
 
 /**
  */
-struct Record(Contents, Malformed ErrorLevel = Malformed.throwException, Range, Separator) if(!is(Contents == class) && !is(Contents == struct)) {
+struct Record(Contents, Malformed ErrorLevel, Range, Separator)
+    if(!is(Contents == class) && !is(Contents == struct))
+{
 private:
-	Range* _input;
-	Separator _separator;
-	Separator _quote;
-	Contents curContentsoken;
-	bool _empty;
+    Range* _input;
+    Separator _separator;
+    Separator _quote;
+    Contents curContentsoken;
+    bool _empty;
 public:
-	/**
-	 */
-	this(Range* input, Separator separator, Separator quote)
-	{
-		_input = input;
-		_separator = separator;
-		_quote = quote;
+    /**
+     */
+    this(Range* input, Separator separator, Separator quote)
+    {
+        _input = input;
+        _separator = separator;
+        _quote = quote;
         prime();
-	}
+    }
 
-	/**
-	 */
-	@property Contents front()
-	{
-		assert(!empty);
-		return curContentsoken;
-	}
+    /**
+     */
+    @property Contents front()
+    {
+        assert(!empty);
+        return curContentsoken;
+    }
 
-	/**
-	 */
-	@property bool empty()
-	{
-		return _empty;
-	}
+    /**
+     */
+    @property bool empty()
+    {
+        return _empty;
+    }
 
-	/**
-	 */
-	void popFront()
-	{
+    /**
+     */
+    void popFront()
+    {
         //Record is complete when input
         // is empty or starts with record break
         if((*_input).empty
@@ -312,13 +337,14 @@ public:
             (*_input).popFront();
 
         prime();
-	}
+    }
 
-    void prime() {
-		auto str = csvNextToken!(ErrorLevel, Range, Separator)
+    void prime()
+    {
+        auto str = csvNextToken!(ErrorLevel, Range, Separator)
                                 (*_input, _separator, _quote,false);
 
-		curContentsoken = to!Contents(str);
+        curContentsoken = to!Contents(str);
     }
 }
 
@@ -336,81 +362,102 @@ public:
  * Returns:
  *        The next CSV token.
  */
-private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException, Range, Separator = ElementType!Range)
+private Range csvNextToken(Malformed ErrorLevel 
+                           = Malformed.throwException, Range, 
+                           Separator = ElementType!Range)
                           (ref Range line, Separator sep = ',',
                            Separator quote = '"',
-                           bool startQuoted = false) {
-	bool quoted = startQuoted;
-	bool escQuote;
-	if(line.empty)
-		return line;
+                           bool startQuoted = false)
+{
+    bool quoted = startQuoted;
+    bool escQuote;
+    if(line.empty)
+        return line;
     
-	Range ans;
+    Range ans;
 
     if(line.front == '\n')
-		return ans;
+        return ans;
     if(line.front == '\r')
-		return ans;
+        return ans;
 
-	if(line.front == quote) {
-		quoted = true;
-		line.popFront();
-	}
+    if(line.front == quote)
+    {
+        quoted = true;
+        line.popFront();
+    }
 
-	while(!line.empty) {
-		assert(!(quoted && escQuote));
-		if(!quoted) {
+    while(!line.empty)
+    {
+        assert(!(quoted && escQuote));
+        if(!quoted) {
             // When not quoted the token ends at sep
-			if(line.front == sep) 
-				break;
-			if(line.front == '\r')
-				break;
-			if(line.front == '\n')
-				break;
-		}
-		if(!quoted && !escQuote) {
-			if(line.front == quote) {
-				// Not quoted, but quote found
-				static if(ErrorLevel == Malformed.throwException)
-					throw new IncompleteCellException(ans, "Quote located in unquoted token");
-				else static if(ErrorLevel == Malformed.ignore)
-					ans ~= quote;
-			} else {
-				// Not quoted, non-quote character
-				ans ~= line.front;
-			}
-		} else {
-			if(line.front == quote) {
-				// Quoted, quote found
-				// By turning off quoted and turning on escQuote
-				// I can tell when to add a quote to the string
-				// escQuote is turned to false when it escapes a
-				// quote or is followed by a non-quote (see outside else).
-				// They are mutually exclusive, but provide different information.
-				if(escQuote) {
-					escQuote = false;
-					quoted = true;
-					ans ~= quote;
-				} else {
-					escQuote = true;
-					quoted = false;
-				}
-			} else {
-				// Quoted, non-quote character
-                if(escQuote) {
-                    throw new IncompleteCellException(ans, "Content continues after end quote, needs to be escaped.");
-						}
-				ans ~= line.front;
-			}
-		}
-		line.popFront();
-	}
+            if(line.front == sep) 
+                break;
+            if(line.front == '\r')
+                break;
+            if(line.front == '\n')
+                break;
+        }
+        if(!quoted && !escQuote)
+        {
+            if(line.front == quote)
+            {
+                // Not quoted, but quote found
+                static if(ErrorLevel == Malformed.throwException)
+                    throw new IncompleteCellException(ans,
+                          "Quote located in unquoted token");
+                else static if(ErrorLevel == Malformed.ignore)
+                    ans ~= quote;
+            }
+            else
+            {
+                // Not quoted, non-quote character
+                ans ~= line.front;
+            }
+        }
+        else
+        {
+            if(line.front == quote)
+            {
+                // Quoted, quote found
+                // By turning off quoted and turning on escQuote
+                // I can tell when to add a quote to the string
+                // escQuote is turned to false when it escapes a
+                // quote or is followed by a non-quote (see outside else).
+                // They are mutually exclusive, but provide different
+                // information.
+                if(escQuote)
+                {
+                    escQuote = false;
+                    quoted = true;
+                    ans ~= quote;
+                } else
+                {
+                    escQuote = true;
+                    quoted = false;
+                }
+            }
+            else
+            {
+                // Quoted, non-quote character
+                if(escQuote)
+                {
+                    throw new IncompleteCellException(ans,
+                          "Content continues after end quote, " ~
+                          "needs to be escaped.");
+                }
+                ans ~= line.front;
+            }
+        }
+        line.popFront();
+    }
 
-	if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
-		throw new IncompleteCellException(ans,
-		          "Data continues on future lines or trailing quote");
+    if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
+        throw new IncompleteCellException(ans,
+                  "Data continues on future lines or trailing quote");
 
-	return ans;
+    return ans;
 }
 
 /**
@@ -428,16 +475,19 @@ enum Malformed
  * Exception thrown when a Token is identified to not be
  * completed.
  */
-class IncompleteCellException : Exception {
-	string partialData;
-	this(string cellPartial, string msg) {
-		super(msg);
-		partialData = cellPartial;
-	}
+class IncompleteCellException : Exception
+{
+    string partialData;
+    this(string cellPartial, string msg)
+    {
+        super(msg);
+        partialData = cellPartial;
+    }
 }
 
 // Test csvNextToken on simplest form and correct format.
-unittest {
+unittest
+{
     string str = "Hello,65,63.63\nWorld,123,3673.562";
 
     auto a = csvNextToken(str);
@@ -471,7 +521,8 @@ unittest {
 }
 
 // Test quoted tokens
-unittest {
+unittest
+{
     string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
 
     auto a = csvNextToken(str);
@@ -505,83 +556,93 @@ unittest {
 }
 
 // Test empty data is pulled at end of record.
-unittest {
-	string str = "Hello,";
-	auto a = csvNextToken(str);
-	assert(a == "Hello");
-	assert(str == ",");
+unittest
+{
+    string str = "Hello,";
+    auto a = csvNextToken(str);
+    assert(a == "Hello");
+    assert(str == ",");
 
-	a = csvNextToken(str);
-	assert(a == "");
+    a = csvNextToken(str);
+    assert(a == "");
 }
 
 // Test exceptions
-unittest {
-	string str = "\"It is me\nNot here";
+unittest
+{
+    string str = "\"It is me\nNot here";
 
-	try {
-		auto a = csvNextToken(str);
-		assert(0);
-	} catch (IncompleteCellException ice) {
-		assert(ice.partialData == "It is me\nNot here");
-		assert(str == "");
-	}
+    try
+    {
+        auto a = csvNextToken(str);
+        assert(0);
+    }
+    catch (IncompleteCellException ice)
+    {
+        assert(ice.partialData == "It is me\nNot here");
+        assert(str == "");
+    }
 
-	str = "It is me Not here\"";
+    str = "It is me Not here\"";
 
-	try {
-		auto a = csvNextToken(str);
-		assert(0);
-	} catch (IncompleteCellException ice) {
-		assert(ice.partialData == "It is me Not here");
-		assert(str == "\"");
-	}
+    try
+    {
+        auto a = csvNextToken(str);
+        assert(0);
+    }
+    catch (IncompleteCellException ice)
+    {
+        assert(ice.partialData == "It is me Not here");
+        assert(str == "\"");
+    }
 
-	str = "Break me, off a \"Kit Kat\" bar";
+    str = "Break me, off a \"Kit Kat\" bar";
 
-	auto a = csvNextToken!(Malformed.ignore)(str);
-	assert(a == "Break me");
+    auto a = csvNextToken!(Malformed.ignore)(str);
+    assert(a == "Break me");
     str.popFront();
-	a = csvNextToken!(Malformed.ignore)(str);
-	assert(a == " off a \"Kit Kat\" bar");
+    a = csvNextToken!(Malformed.ignore)(str);
+    assert(a == " off a \"Kit Kat\" bar");
 }
 
 
 // Test modifying token separators
-unittest {
-	string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here";
+unittest
+{
+    string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here";
 
-	auto a = csvNextToken(str, '|','/');
-	assert(a == "Hello");
-	assert(str == `|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
-
-    str.popFront();
-	a = csvNextToken(str, '|','/');
-	assert(a == "World");
-	assert(str == `|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
+    auto a = csvNextToken(str, '|','/');
+    assert(a == "Hello");
+    assert(str == `|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
 
     str.popFront();
-	a = csvNextToken(str, '|','/');
-	assert(a == `Hi ""There""`);
-	assert(str == `|//|` ~ "/It is\nme/\nNot here");
+    a = csvNextToken(str, '|','/');
+    assert(a == "World");
+    assert(str == `|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
 
     str.popFront();
-	a = csvNextToken(str, '|','/');
-	assert(a == "");
-	assert(str == "|/It is\nme/\nNot here");
-	
-    str.popFront();
-	a = csvNextToken(str, '|','/');
-	assert(a == "It is\nme");
-	assert(str == "\nNot here");
+    a = csvNextToken(str, '|','/');
+    assert(a == `Hi ""There""`);
+    assert(str == `|//|` ~ "/It is\nme/\nNot here");
 
-	a = csvNextToken(str, '|','/');
-	assert(a == "");
-	assert(str == "\nNot here");
+    str.popFront();
+    a = csvNextToken(str, '|','/');
+    assert(a == "");
+    assert(str == "|/It is\nme/\nNot here");
+    
+    str.popFront();
+    a = csvNextToken(str, '|','/');
+    assert(a == "It is\nme");
+    assert(str == "\nNot here");
+
+    a = csvNextToken(str, '|','/');
+    assert(a == "");
+    assert(str == "\nNot here");
 }
 
 // Test Windows CSV files
-unittest {
+unittest
+{
     string str = `Hello,World,"Hi ""There""","",` 
         ~ "\"It is\r\nme\"\r\nNot here";
 
