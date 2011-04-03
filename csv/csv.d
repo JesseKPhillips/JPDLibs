@@ -155,8 +155,7 @@ unittest
 unittest
 {
     string str = "one \"quoted\"";
-    auto records = csvText!(string, Malformed.ignore)(str);
-    foreach(record; records)
+    foreach(record; csvText!(string, Malformed.ignore)(str))
     {
         foreach(cell; record)
         {
@@ -169,8 +168,7 @@ unittest
     {
         string a,b;
     }
-    auto records2 = csvText!(Ans, Malformed.ignore)(str);
-    foreach(record; records2)
+    foreach(record; csvText!(Ans, Malformed.ignore)(str))
     {
             assert(record.a == "one \"quoted\"");
             assert(record.b == "two \"quoted\" end");
@@ -180,14 +178,16 @@ unittest
 // Test Windows line break
 unittest
 {
-    string str = "one\r\ntwo";
+    string str = "one,two\r\nthree";
 
     auto records = csvText(str);
     auto record = records.front;
     assert(record.front == "one");
+    record.popFront();
+    assert(record.front == "two");
     records.popFront();
     record = records.front;
-    assert(record.front == "two");
+    assert(record.front == "three");
 }
 
 /**
@@ -235,6 +235,7 @@ public:
         }
         else
         {
+            recordRange._input = &_input;
             return recordRange;
         }
     }
@@ -250,6 +251,8 @@ public:
      */
     void popFront()
     {
+        recordRange._input = &_input;
+
         while(!recordRange.empty)
         {
             recordRange.popFront();
