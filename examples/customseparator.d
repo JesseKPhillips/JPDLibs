@@ -12,9 +12,9 @@ void main() {
 }
 
 void strings() {
-	string str = `Hello|World|"Hi ""There"""|""|`
-	  "line 1\nline 2&New record";
-	auto records = RecordList!(string,"Checked",string,dchar)(str, '|', '"', '&');
+	string str = `one|two|"three ""quoted"""|""|`
+	  "\"line 1\nline 2\"\nNew record";
+	auto records = RecordList!(string,Malformed.throwException,string,dchar)(str, '|', '"');
 
 	foreach(record; records) {
 		writeln("-----------");
@@ -26,7 +26,7 @@ void strings() {
 
 void doubles() {
 	string str = "5|35.5|63.15";
-	auto records = RecordList!(double,"Checked",string,dchar)(str, '|', '"', '&');
+	auto records = RecordList!(double,Malformed.throwException,string,dchar)(str, '|', '"');
 
 	foreach(record; records) {
 		writeln("-----------");
