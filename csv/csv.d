@@ -87,7 +87,7 @@ deprecated alias csvText csv;
 // Test standard iteration over data.
 unittest
 {
-    string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
+    string str = `one,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix";
     auto records = csvText(str);
     
     int count;
@@ -154,17 +154,17 @@ unittest
 // Test unchecked read
 unittest
 {
-    string str = "It is me \"Not here\"";
+    string str = "one \"quoted\"";
     auto records = csvText!(string, Malformed.ignore)(str);
     foreach(record; records)
     {
         foreach(cell; record)
         {
-            assert(cell == "It is me \"Not here\"");
+            assert(cell == "one \"quoted\"");
         }
     }
 
-    str = "It is me \"Not here\",In \"the\" sand";
+    str = "one \"quoted\",two \"quoted\" end";
     struct Ans
     {
         string a,b;
@@ -172,9 +172,22 @@ unittest
     auto records2 = csvText!(Ans, Malformed.ignore)(str);
     foreach(record; records2)
     {
-            assert(record.a == "It is me \"Not here\"");
-            assert(record.b == "In \"the\" sand");
+            assert(record.a == "one \"quoted\"");
+            assert(record.b == "two \"quoted\" end");
     }
+}
+
+// Test Windows line break
+unittest
+{
+    string str = "one\r\ntwo";
+
+    auto records = csvText(str);
+    auto record = records.front;
+    assert(record.front == "one");
+    records.popFront();
+    record = records.front;
+    assert(record.front == "two");
 }
 
 /**
@@ -523,44 +536,44 @@ unittest
 // Test quoted tokens
 unittest
 {
-    string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
+    string str = `one,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix";
 
     auto a = csvNextToken(str);
-    assert(a == "Hello");
-    assert(str == `,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here");
+    assert(a == "one");
+    assert(str == `,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
     a = csvNextToken(str);
-    assert(a == "World");
-    assert(str == `,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here");
+    assert(a == "two");
+    assert(str == `,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
     a = csvNextToken(str);
-    assert(a == "Hi \"There\"");
-    assert(str == `,"",` ~ "\"It is\nme\"\nNot here");
+    assert(a == "three \"quoted\"");
+    assert(str == `,"",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
     a = csvNextToken(str);
     assert(a == "");
-    assert(str == ",\"It is\nme\"\nNot here");
+    assert(str == ",\"five\nnew line\"\nsix");
     
     str.popFront();
     a = csvNextToken(str);
-    assert(a == "It is\nme");
-    assert(str == "\nNot here");
+    assert(a == "five\nnew line");
+    assert(str == "\nsix");
 
     str.popFront();
     a = csvNextToken(str);
-    assert(a == "Not here");
+    assert(a == "six");
     assert(str == "");
 }
 
 // Test empty data is pulled at end of record.
 unittest
 {
-    string str = "Hello,";
+    string str = "one,";
     auto a = csvNextToken(str);
-    assert(a == "Hello");
+    assert(a == "one");
     assert(str == ",");
 
     a = csvNextToken(str);
@@ -570,7 +583,7 @@ unittest
 // Test exceptions
 unittest
 {
-    string str = "\"It is me\nNot here";
+    string str = "\"one\nnew line";
 
     try
     {
@@ -579,11 +592,11 @@ unittest
     }
     catch (IncompleteCellException ice)
     {
-        assert(ice.partialData == "It is me\nNot here");
+        assert(ice.partialData == "one\nnew line");
         assert(str == "");
     }
 
-    str = "It is me Not here\"";
+    str = "Hello world\"";
 
     try
     {
@@ -592,87 +605,40 @@ unittest
     }
     catch (IncompleteCellException ice)
     {
-        assert(ice.partialData == "It is me Not here");
+        assert(ice.partialData == "Hello world");
         assert(str == "\"");
     }
 
-    str = "Break me, off a \"Kit Kat\" bar";
+    str = "one, two \"quoted\" end";
 
     auto a = csvNextToken!(Malformed.ignore)(str);
-    assert(a == "Break me");
+    assert(a == "one");
     str.popFront();
     a = csvNextToken!(Malformed.ignore)(str);
-    assert(a == " off a \"Kit Kat\" bar");
+    assert(a == " two \"quoted\" end");
 }
 
 
 // Test modifying token separators
 unittest
 {
-    string str = `Hello|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here";
+    string str = `one|two|/three "quoted"/|//`;
 
     auto a = csvNextToken(str, '|','/');
-    assert(a == "Hello");
-    assert(str == `|World|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
+    assert(a == "one");
+    assert(str == `|two|/three "quoted"/|//`);
 
     str.popFront();
     a = csvNextToken(str, '|','/');
-    assert(a == "World");
-    assert(str == `|/Hi ""There""/|//|` ~ "/It is\nme/\nNot here");
+    assert(a == "two");
+    assert(str == `|/three "quoted"/|//`);
 
     str.popFront();
     a = csvNextToken(str, '|','/');
-    assert(a == `Hi ""There""`);
-    assert(str == `|//|` ~ "/It is\nme/\nNot here");
+    assert(a == `three "quoted"`);
+    assert(str == `|//`);
 
     str.popFront();
-    a = csvNextToken(str, '|','/');
-    assert(a == "");
-    assert(str == "|/It is\nme/\nNot here");
-    
-    str.popFront();
-    a = csvNextToken(str, '|','/');
-    assert(a == "It is\nme");
-    assert(str == "\nNot here");
-
     a = csvNextToken(str, '|','/');
     assert(a == "");
-    assert(str == "\nNot here");
-}
-
-// Test Windows CSV files
-unittest
-{
-    string str = `Hello,World,"Hi ""There""","",` 
-        ~ "\"It is\r\nme\"\r\nNot here";
-
-    auto a = csvNextToken(str);
-    assert(a == "Hello");
-    assert(str == `,World,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
-
-    str.popFront();
-    a = csvNextToken(str);
-    assert(a == "World");
-    assert(str == `,"Hi ""There""","",` ~ "\"It is\r\nme\"\r\nNot here");
-
-    str.popFront();
-    a = csvNextToken(str);
-    assert(a == "Hi \"There\"");
-    assert(str == `,"",` ~ "\"It is\r\nme\"\r\nNot here");
-
-    str.popFront();
-    a = csvNextToken(str);
-    assert(a == "");
-    assert(str == ",\"It is\r\nme\"\r\nNot here");
-    
-    str.popFront();
-    a = csvNextToken(str);
-    assert(a == "It is\r\nme");
-    assert(str == "\r\nNot here");
-
-    str.popFront();
-    str.popFront();
-    a = csvNextToken(str);
-    assert(a == "Not here");
-    assert(str == "");
 }
