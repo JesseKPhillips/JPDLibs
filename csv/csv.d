@@ -474,7 +474,8 @@ public:
  * Returns:
  *        The next CSV token.
  */
-private Range csvNextToken(Malformed ErrorLevel, Range, Separator)
+private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
+                           Range, Separator)
                           (ref Range line, Separator sep, Separator quote,
                            bool startQuoted = false)
 {
@@ -599,32 +600,32 @@ unittest
 {
     string str = "Hello,65,63.63\nWorld,123,3673.562";
 
-    auto a = csvNextToken(str);
+    auto a = csvNextToken(str,',','"');
     assert(a == "Hello");
     assert(str == ",65,63.63\nWorld,123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "65");
     assert(str == ",63.63\nWorld,123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "63.63");
     assert(str == "\nWorld,123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "World");
     assert(str == ",123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "123");
     assert(str == ",3673.562");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "3673.562");
     assert(str == "");
 }
@@ -634,32 +635,32 @@ unittest
 {
     string str = `one,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix";
 
-    auto a = csvNextToken(str);
+    auto a = csvNextToken(str,',','"');
     assert(a == "one");
     assert(str == `,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "two");
     assert(str == `,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "three \"quoted\"");
     assert(str == `,"",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "");
     assert(str == ",\"five\nnew line\"\nsix");
     
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "five\nnew line");
     assert(str == "\nsix");
 
     str.popFront();
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "six");
     assert(str == "");
 }
@@ -668,11 +669,11 @@ unittest
 unittest
 {
     string str = "one,";
-    auto a = csvNextToken(str);
+    auto a = csvNextToken(str,',','"');
     assert(a == "one");
     assert(str == ",");
 
-    a = csvNextToken(str);
+    a = csvNextToken(str,',','"');
     assert(a == "");
 }
 
@@ -683,7 +684,7 @@ unittest
 
     try
     {
-        auto a = csvNextToken(str);
+        auto a = csvNextToken(str,',','"');
         assert(0);
     }
     catch (IncompleteCellException ice)
@@ -696,7 +697,7 @@ unittest
 
     try
     {
-        auto a = csvNextToken(str);
+        auto a = csvNextToken(str,',','"');
         assert(0);
     }
     catch (IncompleteCellException ice)
@@ -707,10 +708,10 @@ unittest
 
     str = "one, two \"quoted\" end";
 
-    auto a = csvNextToken!(Malformed.ignore)(str);
+    auto a = csvNextToken!(Malformed.ignore)(str,',','"');
     assert(a == "one");
     str.popFront();
-    a = csvNextToken!(Malformed.ignore)(str);
+    a = csvNextToken!(Malformed.ignore)(str,',','"');
     assert(a == " two \"quoted\" end");
 }
 
