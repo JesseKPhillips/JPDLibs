@@ -366,7 +366,8 @@ public:
         static if(is(Contents == struct))
         {
             size_t colIndex;
-            foreach(colData; recordRange) {
+            foreach(colData; recordRange)
+            {
                 scope(exit) colIndex++;
                 if(indices.length > 0) 
                 {
@@ -401,6 +402,7 @@ private:
     Separator _separator;
     Separator _quote;
     Contents curContentsoken;
+    typeof(appender!(char[])()) _front;
     bool _empty;
 public:
     /**
@@ -410,6 +412,7 @@ public:
         _input = input;
         _separator = separator;
         _quote = quote;
+        _front = appender!(char[])();
         prime();
     }
 
@@ -448,15 +451,16 @@ public:
         if((*_input).front == _separator)
             (*_input).popFront();
 
+        _front.shrinkTo(0);
         prime();
     }
 
     void prime()
     {
-        auto str = csvNextToken!(ErrorLevel, Range, Separator)
-                                (*_input, _separator, _quote,false);
+        csvNextToken!(ErrorLevel, Range, Separator)
+                                (*_input, _front, _separator, _quote,false);
 
-        curContentsoken = to!Contents(str);
+        curContentsoken = to!Contents(_front.data);
     }
 }
 
@@ -474,22 +478,20 @@ public:
  * Returns:
  *        The next CSV token.
  */
-private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
+private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                            Range, Separator)
-                          (ref Range line, Separator sep, Separator quote,
-                           bool startQuoted = false)
+                          (ref Range line, ref Appender!(char[]) ans,
+                           Separator sep, Separator quote, bool startQuoted = false)
 {
     bool quoted = startQuoted;
     bool escQuote;
     if(line.empty)
-        return line;
+        return;
     
-    Range ans;
-
     if(line.front == '\n')
-        return ans;
+        return;
     if(line.front == '\r')
-        return ans;
+        return;
 
     if(line.front == quote)
     {
@@ -500,7 +502,8 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
     while(!line.empty)
     {
         assert(!(quoted && escQuote));
-        if(!quoted) {
+        if(!quoted)
+        {
             // When not quoted the token ends at sep
             if(line.front == sep) 
                 break;
@@ -515,15 +518,15 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
             {
                 // Not quoted, but quote found
                 static if(ErrorLevel == Malformed.throwException)
-                    throw new IncompleteCellException(ans,
+                    throw new IncompleteCellException(ans.data.idup,
                           "Quote located in unquoted token");
                 else static if(ErrorLevel == Malformed.ignore)
-                    ans ~= quote;
+                    ans.put(quote);
             }
             else
             {
                 // Not quoted, non-quote character
-                ans ~= line.front;
+                ans.put(line.front);
             }
         }
         else
@@ -541,7 +544,7 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                 {
                     escQuote = false;
                     quoted = true;
-                    ans ~= quote;
+                    ans.put(quote);
                 } else
                 {
                     escQuote = true;
@@ -553,21 +556,20 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                 // Quoted, non-quote character
                 if(escQuote)
                 {
-                    throw new IncompleteCellException(ans,
+                    throw new IncompleteCellException(ans.data.idup,
                           "Content continues after end quote, " ~
                           "needs to be escaped.");
                 }
-                ans ~= line.front;
+                ans.put(line.front);
             }
         }
         line.popFront();
     }
 
     if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
-        throw new IncompleteCellException(ans,
+        throw new IncompleteCellException(ans.data.idup,
                   "Data continues on future lines or trailing quote");
 
-    return ans;
 }
 
 /**
@@ -600,33 +602,39 @@ unittest
 {
     string str = "Hello,65,63.63\nWorld,123,3673.562";
 
-    auto a = csvNextToken(str,',','"');
-    assert(a == "Hello");
+    auto a = appender!(char[]);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "Hello");
     assert(str == ",65,63.63\nWorld,123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "65");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "65");
     assert(str == ",63.63\nWorld,123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "63.63");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "63.63");
     assert(str == "\nWorld,123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "World");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "World");
     assert(str == ",123,3673.562");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "123");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "123");
     assert(str == ",3673.562");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "3673.562");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "3673.562");
     assert(str == "");
 }
 
@@ -635,33 +643,39 @@ unittest
 {
     string str = `one,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix";
 
-    auto a = csvNextToken(str,',','"');
-    assert(a == "one");
+    auto a = appender!(char[]);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "one");
     assert(str == `,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "two");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "two");
     assert(str == `,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "three \"quoted\"");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "three \"quoted\"");
     assert(str == `,"",` ~ "\"five\nnew line\"\nsix");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "");
     assert(str == ",\"five\nnew line\"\nsix");
     
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "five\nnew line");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "five\nnew line");
     assert(str == "\nsix");
 
     str.popFront();
-    a = csvNextToken(str,',','"');
-    assert(a == "six");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "six");
     assert(str == "");
 }
 
@@ -669,12 +683,14 @@ unittest
 unittest
 {
     string str = "one,";
-    auto a = csvNextToken(str,',','"');
-    assert(a == "one");
+    auto a = appender!(char[]);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "one");
     assert(str == ",");
 
-    a = csvNextToken(str,',','"');
-    assert(a == "");
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "");
 }
 
 // Test exceptions
@@ -684,7 +700,8 @@ unittest
 
     try
     {
-        auto a = csvNextToken(str,',','"');
+    auto a = appender!(char[]);
+        csvNextToken(str,a,',','"');
         assert(0);
     }
     catch (IncompleteCellException ice)
@@ -697,7 +714,8 @@ unittest
 
     try
     {
-        auto a = csvNextToken(str,',','"');
+    auto a = appender!(char[]);
+        csvNextToken(str,a,',','"');
         assert(0);
     }
     catch (IncompleteCellException ice)
@@ -708,11 +726,13 @@ unittest
 
     str = "one, two \"quoted\" end";
 
-    auto a = csvNextToken!(Malformed.ignore)(str,',','"');
-    assert(a == "one");
+    auto a = appender!(char[]);
+    csvNextToken!(Malformed.ignore)(str,a,',','"');
+    assert(a.data == "one");
     str.popFront();
-    a = csvNextToken!(Malformed.ignore)(str,',','"');
-    assert(a == " two \"quoted\" end");
+    a.shrinkTo(0);
+    csvNextToken!(Malformed.ignore)(str,a,',','"');
+    assert(a.data == " two \"quoted\" end");
 }
 
 
@@ -721,21 +741,25 @@ unittest
 {
     string str = `one|two|/three "quoted"/|//`;
 
-    auto a = csvNextToken(str, '|','/');
-    assert(a == "one");
+    auto a = appender!(char[]);
+    csvNextToken(str,a, '|','/');
+    assert(a.data == "one");
     assert(str == `|two|/three "quoted"/|//`);
 
     str.popFront();
-    a = csvNextToken(str, '|','/');
-    assert(a == "two");
+    a.shrinkTo(0);
+    csvNextToken(str,a, '|','/');
+    assert(a.data == "two");
     assert(str == `|/three "quoted"/|//`);
 
     str.popFront();
-    a = csvNextToken(str, '|','/');
-    assert(a == `three "quoted"`);
+    a.shrinkTo(0);
+    csvNextToken(str,a, '|','/');
+    assert(a.data == `three "quoted"`);
     assert(str == `|//`);
 
     str.popFront();
-    a = csvNextToken(str, '|','/');
-    assert(a == "");
+    a.shrinkTo(0);
+    csvNextToken(str,a, '|','/');
+    assert(a.data == "");
 }
