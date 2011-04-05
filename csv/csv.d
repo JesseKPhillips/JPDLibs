@@ -235,8 +235,7 @@ unittest
 /**
  * Range which provides access to CSV Records and Tokens.
  */
-struct RecordList(Contents, Malformed ErrorLevel 
-                  = Malformed.throwException, Range, Separator)
+struct RecordList(Contents, Malformed ErrorLevel, Range, Separator)
 {
 private:
     Range _input;
@@ -475,11 +474,8 @@ public:
  * Returns:
  *        The next CSV token.
  */
-private Range csvNextToken(Malformed ErrorLevel 
-                           = Malformed.throwException, Range, 
-                           Separator = ElementType!Range)
-                          (ref Range line, Separator sep = ',',
-                           Separator quote = '"',
+private Range csvNextToken(Malformed ErrorLevel, Range, Separator)
+                          (ref Range line, Separator sep, Separator quote,
                            bool startQuoted = false)
 {
     bool quoted = startQuoted;
