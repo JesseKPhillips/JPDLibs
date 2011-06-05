@@ -481,7 +481,8 @@ public:
 private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                            Range, Separator)
                           (ref Range line, ref Appender!(char[]) ans,
-                           Separator sep, Separator quote, bool startQuoted = false)
+                           Separator sep, Separator quote,
+                           bool startQuoted = false)
 {
     bool quoted = startQuoted;
     bool escQuote;
@@ -556,9 +557,12 @@ private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                 // Quoted, non-quote character
                 if(escQuote)
                 {
-                    throw new IncompleteCellException(ans.data.idup,
+                    static if(ErrorLevel == Malformed.throwException)
+                        throw new IncompleteCellException(ans.data.idup,
                           "Content continues after end quote, " ~
-                          "needs to be escaped.");
+                          "or needs to be escaped.");
+                    else static if(ErrorLevel == Malformed.ignore)
+                        break;
                 }
                 ans.put(line.front);
             }
@@ -566,8 +570,9 @@ private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
         line.popFront();
     }
 
-    if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
-        throw new IncompleteCellException(ans.data.idup,
+    static if(ErrorLevel == Malformed.throwException)
+        if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
+            throw new IncompleteCellException(ans.data.idup,
                   "Data continues on future lines or trailing quote");
 
 }
