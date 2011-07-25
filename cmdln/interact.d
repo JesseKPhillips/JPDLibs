@@ -148,7 +148,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
 			bool found;
 			i = 0;
 			foreach(o; options) {
-				if(ans.tolower == to!string(o).tolower) {
+				if(ans.toLower == to!string(o).toLower) {
 					found = true;
 					ians = i+1;
 					break;
