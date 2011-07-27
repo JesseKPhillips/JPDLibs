@@ -634,7 +634,6 @@ public:
         if((*_input).front == _separator)
             (*_input).popFront();
 
-
         _front.shrinkTo(0);
         prime();
     }
