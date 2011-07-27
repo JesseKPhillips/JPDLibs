@@ -1,7 +1,83 @@
+//Written in the D programming language
+
 /**
- * Written by Jesse Phillips
+ * Implements functionality to read Comma Separated Values and its variants
+ * from a input range.
  *
- * License is Boost
+ * TODO: What should be used where. Separator, comma, and delimiter are
+ * synonyms; quote has no good synonym; input and data refer to the same but
+ * data works well for documentation while input is nice for the
+ * implementation.
+ *
+ * Comma Separated Values provide a simple means to transfer and store 
+ * tabular data. It has been common for programs to use their own
+ * variant of the CSV format. This parser will loosely follow the
+ * $(WEB tools.ietf.org/html/rfc4180, RFC-4180). CSV data should follow
+ * the following rules.
+ *
+ * $(UL
+ *     $(LI A record is separated by a new line (CRLF,LF,CR))
+ *     $(LI A final record may end with a new line)
+ *     $(LI Header may be provided as first line in file)
+ *     $(LI A record has fields separated by a comma (customizable))
+ *     $(LI A field containing new lines, commas, or double quotes
+ *          should be enclosed in double quotes (customizable))
+ *     $(LI Double quotes in a field are escaped with a double quote)
+ *     $(LI Each record should contain the same number of fields)
+ *   )
+ *
+ * This module allows content to be iterated by record stored in a struct
+ * or into a range of fields. Upon detection of an error an
+ * IncompleteCellException is thrown (can be disabled). csvNextToken has been
+ * made public to allow for attempted recovery.
+ *
+ * Disabling exceptions will lift many restrictions specified above. A quote
+ * can appear in a field if the field was not quoted. If in a quoted field any
+ * quote by itself, not at the end of a field, will end processing for that
+ * field. The field is ended when there is no data, even if the quote was not
+ * closed.
+ *
+ * Written by Jesse Phillips
+ *   Copyright: Copyright 2011
+ *   License:   $(WEB www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
+ *   Authors:   Jesse Phillips
+ *   Source:    $(PHOBOSSRC std/_csv.d)
+ */
+module csv;
+
+import std.algorithm;
+import std.array;
+import std.conv;
+import std.exception;
+import std.range;
+import std.stdio;
+import std.traits;
+
+/**
+ * Builds a RecordList range for iterating over records found in data.
+ *
+ * This function simplifies the process for standard text input.
+ * For other data create RecordList yourself.
+ *
+ * The Content of the data can be provided if if all the records are the same
+ * type. The ErrorLevel can be set to Malformed.ignore if best guess processing
+ * should take place.
+ *
+ * An optional heading can be provided. The first line will be read in as the
+ * heading. If the Content type is a struct then the heading provided is
+ * expected to correspond to the fields in the struct. When Content is non-struct
+ * the heading must be provided in the same order as the file or an exception
+ * is thrown.
+ *
+ * TODO: Providing a heading for non-struct data has no clear choice. If the
+ * order of the provided heading is different from the file, it
+ * processes what it can in order, it reorders the provided heading to match
+ * that of the data, or it throws when the provided header is out of order.
+ *
+ * The delimiter (comma), and quote can optionally be changed.
+ *
+ * TODO: RecordList provides this custum sep, are the extra functions with
+ * it? 
  *
  * Example for integer data:
  *
@@ -14,7 +90,6 @@
  * foreach(record; records) {
  *    foreach(cell; record) {
  *        assert(ans[count] == cell);
- *        count++;
  *    }
  * }
  * -------
@@ -37,43 +112,17 @@
  *     writeln(record.other);
  * }
  * -------
- */
-module csv;
-
-import std.array;
-import std.conv;
-import std.exception;
-import std.range;
-import std.stdio;
-import std.traits;
-
-/**
- * Builds a RecordList range for iterating over tokens found in data.
- * This function simplifies the process for standard text input.
- * For other data create RecordList yourself.
- *
- * -------
- * string str = `76,26,22`;
- * int[] ans = [76,26,22];
- * auto records = csvText!int(str);
- * 
- * int count;
- * foreach(record; records) {
- *     foreach(cell; record) {
- *         assert(ans[count] == cell);
- *         count++;
- *     }
- * }
- * -------
  *
  * Returns:
- *      If Contents is a struct or class, the range will return a
- *      struct/class populated by a single record.
+ *      If Contents is a struct, the range will return a
+ *      struct populated by a single record.
  *
  *      Otherwise the range will return a Record range of the type.
  *
  * Throws:
- *       IncompleteCellToken When data is shown to not be complete.
+ *       IncompleteCellToken When a quote is found in an unquoted field, data
+ *       continues after a closing quote, or the quoted field was not closed
+ *       before data was empty.
  */
 auto csvText(Contents = string, Malformed ErrorLevel 
              = Malformed.throwException, Range)(Range data)
@@ -90,6 +139,26 @@ auto csvText(Contents = string, Malformed ErrorLevel
 {
     return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
         (data, ',', '"', heading);
+}
+
+/// Ditto
+auto csvText(Contents = string, Malformed ErrorLevel 
+             = Malformed.throwException, Range)(string delimiter, string quote,
+                                                Range data)
+    if(isSomeString!Range)
+{
+    return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
+        (data, delimiter, quote);
+}
+
+/// Ditto
+auto csvText(Contents = string, Malformed ErrorLevel 
+             = Malformed.throwException, Range)(string delimiter, string quote,
+                                                Range data, string[] heading)
+    if(isSomeString!Range)
+{
+    return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
+        (data, delimiter, quote, heading);
 }
 
 deprecated alias csvText csv;
@@ -109,6 +178,16 @@ unittest
         }
     }
     assert(count == 6);
+}
+
+// Test newline on last record
+unittest
+{
+    string str = "one,two\nthree,four\n";
+    auto records = csvText(str);
+    records.popFront();
+    records.popFront();
+    assert(records.empty);
 }
 
 // Test structure conversion interface.
@@ -191,6 +270,45 @@ unittest
         count++;
     }
     assert(count == 2);
+
+}
+
+// Test header interface
+unittest
+{
+    string str = "a,b,c\nHello,65,63.63\nWorld,123,3673.562";
+    auto records = csvText(str, ["b"]);
+
+    auto ans = ["65","123"];
+    foreach(record; records)
+        foreach(cell; record) {
+            assert(cell == ans.front);
+            ans.popFront();
+        }
+
+    try {
+        records = csvText(str, ["b","a"]);
+        assert(0);
+    } catch(Exception e) {
+    }
+
+    auto records2 = csvText!(string, Malformed.ignore)(str, ["b","a"]);
+
+    ans = ["Hello","65","World","123"];
+    foreach(record; records2)
+        foreach(cell; record) {
+            assert(cell == ans.front);
+            ans.popFront();
+        }
+}
+
+// Test null header interface
+unittest
+{
+    string str = "a,b,c\nHello,65,63.63\nWorld,123,3673.562";
+    auto records = csvText(str, cast(string[])null);
+
+    assert(records.heading == ["a","b","c"]);
 }
 
 // Test unchecked read
@@ -233,7 +351,7 @@ unittest
 }
 
 /**
- * Range which provides access to CSV Records and Tokens.
+ * Range which provides access to CSV Records and Fields.
  */
 struct RecordList(Contents, Malformed ErrorLevel, Range, Separator)
 {
@@ -251,7 +369,12 @@ private:
     else
         Record!(Contents, ErrorLevel, Range, Separator) recordRange;
 public:
+    /// Array of the heading contained in the file.
+    Range[] heading;
+
     /**
+     * Constructor to initialize the input, separator and quote for data
+     * without a heading.
      */
     this(Range input, Separator separator, Separator quote)
     {
@@ -259,12 +382,19 @@ public:
         _separator = separator;
         _quote = quote;
         
-        indices.length =  FieldTypeTuple!(Contents).length;
-        foreach(i, j; FieldTypeTuple!Contents)
-            indices[i] = i;
+        static if(is(Contents == struct))
+        {
+            indices.length =  FieldTypeTuple!(Contents).length;
+            foreach(i, j; FieldTypeTuple!Contents)
+                indices[i] = i;
+        }
         prime();
     }
 
+    /**
+     * Constructor to initialize the input, separator and quote for data
+     * with a heading.
+     */
     this(Range input, Separator separator, Separator quote, string[] colHeaders)
     {
         _input = input;
@@ -278,11 +408,12 @@ public:
         }
 
         auto r = Record!(Range, ErrorLevel, Range, Separator)
-            (&_input, _separator, _quote);
+            (&_input, _separator, _quote, indices);
 
         size_t colIndex;
         foreach(col; r)
         {
+            heading ~= col;
             auto ptr = col in colToIndex;
             if(ptr)
                 *ptr = colIndex;
@@ -298,7 +429,19 @@ public:
                         "Header not found: " ~ to!string(h));
             indices[i] = index;
         }
-        
+
+        static if(!is(Contents == struct))
+        {
+            static if(ErrorLevel == Malformed.ignore)
+            {
+                sort(indices);
+            }
+            else 
+            {
+                enforce(isSorted(indices));
+            }
+        }
+
         popFront();
     }
 
@@ -341,8 +484,6 @@ public:
             recordRange.popFront();
         }
 
-        if(_input.empty)
-            _empty = true;
         if(!_input.empty)
         {
            if(_input.front == '\r') 
@@ -354,15 +495,27 @@ public:
            else if(_input.front == '\n') 
                _input.popFront();
         }
+
+        if(_input.empty)
+            _empty = true;
+
         prime();
     }
     
-    void prime()
+    private void prime()
     {
         if(_empty)
             return;
-        recordRange = typeof(recordRange)
-                             (&_input, _separator, _quote);
+        static if(is(Contents == struct))
+        {
+            recordRange = typeof(recordRange)
+                                 (&_input, _separator, _quote, null);
+        }
+        else
+        {
+            recordRange = typeof(recordRange)
+                                 (&_input, _separator, _quote, indices);
+        }
         static if(is(Contents == struct))
         {
             size_t colIndex;
@@ -404,15 +557,27 @@ private:
     Contents curContentsoken;
     typeof(appender!(char[])()) _front;
     bool _empty;
+    size_t[] _popCount;
 public:
     /**
      */
-    this(Range* input, Separator separator, Separator quote)
+    this(Range* input, Separator separator, Separator quote, size_t[] indices)
     {
         _input = input;
         _separator = separator;
         _quote = quote;
         _front = appender!(char[])();
+        _popCount = indices.dup;
+
+        // If a header was given, each call to popFront will need
+        // to eliminate so many tokens. This calculates
+        // how many will be skipped to get to the next header column
+        size_t normalizer;
+        foreach(ref c; _popCount) {
+            c -= normalizer;
+            normalizer += c + 1;
+        }
+
         prime();
     }
 
@@ -430,16 +595,34 @@ public:
     {
         return _empty;
     }
+    
+    /**
+     * Record is complete when input
+     * is empty or starts with record break
+     */
+    private bool recordEnd() {
+        if((*_input).empty
+           || (*_input).front == '\n' 
+           || (*_input).front == '\r')
+        {
+            return true;
+        }
+        return false;
+    }
+
 
     /**
      */
     void popFront()
     {
-        //Record is complete when input
-        // is empty or starts with record break
-        if((*_input).empty
-           || (*_input).front == '\n' 
-           || (*_input).front == '\r')
+        if(_popCount && _popCount.empty) {
+            while(!recordEnd())
+            {
+                prime(1);
+            }
+        }
+
+        if(recordEnd())
         {
             _empty = true;
             return;
@@ -451,22 +634,40 @@ public:
         if((*_input).front == _separator)
             (*_input).popFront();
 
+
         _front.shrinkTo(0);
         prime();
     }
 
-    void prime()
+    /**
+     * Handles moving to the next skipNum token.
+     */
+    private void prime(size_t skipNum) {
+        foreach(i; 0..skipNum) {
+            _front.shrinkTo(0);
+            if((*_input).front == _separator)
+                (*_input).popFront();
+            csvNextToken!(ErrorLevel, Range, Separator)
+                                   (*_input, _front, _separator, _quote,false);
+        }
+    }
+
+    private void prime()
     {
         csvNextToken!(ErrorLevel, Range, Separator)
-                                (*_input, _front, _separator, _quote,false);
+                               (*_input, _front, _separator, _quote,false);
 
+        auto skipNum = _popCount.empty ? 0 : _popCount.front;
+        if(!_popCount.empty)
+            _popCount.popFront();
+        if(skipNum)
+            prime(skipNum);
         curContentsoken = to!Contents(_front.data);
     }
 }
 
 /**
- * Lower level control over parsing CSV. At this time it is not ready for
- * public consumption.
+ * Lower level control over parsing CSV
  *
  * The expected use of this would be to create a parser. And
  * may also be useful when handling errors within a CSV file.
@@ -475,47 +676,53 @@ public:
  * start with either a separator or record break (\n, \r\n, \r) which 
  * must be removed for subsequent calls.
  *
- * Returns:
- *        The next CSV token.
+ * params:
+ *       input - Any CSV data
+ *       ans   - The first field in the input
+ *       sep   - The character to represent a comma in the specification
+ *       quote - The character to represent a quote in the specification
+ *       startQuoted - Whether the input should be considered to already be in
+ * quotes
+ *
  */
-private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
+void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                            Range, Separator)
-                          (ref Range line, ref Appender!(char[]) ans,
+                          (ref Range input, ref Appender!(char[]) ans,
                            Separator sep, Separator quote,
                            bool startQuoted = false)
 {
     bool quoted = startQuoted;
     bool escQuote;
-    if(line.empty)
+    if(input.empty)
         return;
     
-    if(line.front == '\n')
+    if(input.front == '\n')
         return;
-    if(line.front == '\r')
+    if(input.front == '\r')
         return;
 
-    if(line.front == quote)
+    if(input.front == quote)
     {
         quoted = true;
-        line.popFront();
+        input.popFront();
     }
 
-    while(!line.empty)
+    while(!input.empty)
     {
         assert(!(quoted && escQuote));
         if(!quoted)
         {
             // When not quoted the token ends at sep
-            if(line.front == sep) 
+            if(input.front == sep) 
                 break;
-            if(line.front == '\r')
+            if(input.front == '\r')
                 break;
-            if(line.front == '\n')
+            if(input.front == '\n')
                 break;
         }
         if(!quoted && !escQuote)
         {
-            if(line.front == quote)
+            if(input.front == quote)
             {
                 // Not quoted, but quote found
                 static if(ErrorLevel == Malformed.throwException)
@@ -527,12 +734,12 @@ private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
             else
             {
                 // Not quoted, non-quote character
-                ans.put(line.front);
+                ans.put(input.front);
             }
         }
         else
         {
-            if(line.front == quote)
+            if(input.front == quote)
             {
                 // Quoted, quote found
                 // By turning off quoted and turning on escQuote
@@ -564,14 +771,14 @@ private void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                     else static if(ErrorLevel == Malformed.ignore)
                         break;
                 }
-                ans.put(line.front);
+                ans.put(input.front);
             }
         }
-        line.popFront();
+        input.popFront();
     }
 
     static if(ErrorLevel == Malformed.throwException)
-        if(quoted && (line.empty || line.front == '\n' || line.front == '\r'))
+        if(quoted && (input.empty || input.front == '\n' || input.front == '\r'))
             throw new IncompleteCellException(ans.data.idup,
                   "Data continues on future lines or trailing quote");
 
