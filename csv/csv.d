@@ -4,15 +4,10 @@
  * Implements functionality to read Comma Separated Values and its variants
  * from a input range.
  *
- * TODO: What should be used where. Separator, comma, and delimiter are
- * synonyms; quote has no good synonym; input and data refer to the same but
- * data works well for documentation while input is nice for the
- * implementation.
- *
  * Comma Separated Values provide a simple means to transfer and store 
  * tabular data. It has been common for programs to use their own
  * variant of the CSV format. This parser will loosely follow the
- * $(WEB tools.ietf.org/html/rfc4180, RFC-4180). CSV data should follow
+ * $(WEB tools.ietf.org/html/rfc4180, RFC-4180). CSV input should follow
  * the following rules.
  *
  * $(UL
@@ -34,7 +29,7 @@
  * Disabling exceptions will lift many restrictions specified above. A quote
  * can appear in a field if the field was not quoted. If in a quoted field any
  * quote by itself, not at the end of a field, will end processing for that
- * field. The field is ended when there is no data, even if the quote was not
+ * field. The field is ended when there is no input, even if the quote was not
  * closed.
  *
  * Written by Jesse Phillips
@@ -54,12 +49,12 @@ import std.stdio;
 import std.traits;
 
 /**
- * Builds a RecordList range for iterating over records found in data.
+ * Builds a RecordList range for iterating over records found in input.
  *
  * This function simplifies the process for standard text input.
- * For other data create RecordList yourself.
+ * For other input create RecordList yourself.
  *
- * The Content of the data can be provided if if all the records are the same
+ * The Content of the input can be provided if if all the records are the same
  * type. The ErrorLevel can be set to Malformed.ignore if best guess processing
  * should take place.
  *
@@ -72,12 +67,12 @@ import std.traits;
  * TODO: Providing a heading for non-struct data has no clear choice. If the
  * order of the provided heading is different from the file, it
  * processes what it can in order, it reorders the provided heading to match
- * that of the data, or it throws when the provided header is out of order.
+ * that of the input, or it throws when the provided header is out of order.
  *
  * The delimiter (comma), and quote can optionally be changed.
  *
- * TODO: RecordList provides this custum sep, are the extra functions with
- * it? 
+ * TODO: RecordList provides this custom delim, are the extra functions with
+ * it needed? 
  *
  * Example for integer data:
  *
@@ -125,45 +120,45 @@ import std.traits;
  *       before data was empty.
  */
 auto csvText(Contents = string, Malformed ErrorLevel 
-             = Malformed.throwException, Range)(Range data)
+             = Malformed.throwException, Range)(Range input)
     if(isSomeString!Range)
 {
     return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
-        (data, ',', '"');
+        (input, ',', '"');
 }
 
 /// Ditto
 auto csvText(Contents = string, Malformed ErrorLevel 
-             = Malformed.throwException, Range)(Range data, string[] heading)
+             = Malformed.throwException, Range)(Range input, string[] heading)
     if(isSomeString!Range)
 {
     return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
-        (data, ',', '"', heading);
-}
-
-/// Ditto
-auto csvText(Contents = string, Malformed ErrorLevel 
-             = Malformed.throwException, Range)(string delimiter, string quote,
-                                                Range data)
-    if(isSomeString!Range)
-{
-    return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
-        (data, delimiter, quote);
+        (input, ',', '"', heading);
 }
 
 /// Ditto
 auto csvText(Contents = string, Malformed ErrorLevel 
              = Malformed.throwException, Range)(string delimiter, string quote,
-                                                Range data, string[] heading)
+                                                Range input)
     if(isSomeString!Range)
 {
     return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
-        (data, delimiter, quote, heading);
+        (input, delimiter, quote);
+}
+
+/// Ditto
+auto csvText(Contents = string, Malformed ErrorLevel 
+             = Malformed.throwException, Range)(string delimiter, string quote,
+                                                Range input, string[] heading)
+    if(isSomeString!Range)
+{
+    return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
+        (input, delimiter, quote, heading);
 }
 
 deprecated alias csvText csv;
 
-// Test standard iteration over data.
+// Test standard iteration over input.
 unittest
 {
     string str = `one,two,"three ""quoted""","",` ~ "\"five\nnew line\"\nsix";
@@ -221,7 +216,7 @@ unittest {
     assert(count == 2);
 }
 
-// Test data conversion interface
+// Test input conversion interface
 unittest
 {
     string str = `76,26,22`;
@@ -373,13 +368,13 @@ public:
     Range[] heading;
 
     /**
-     * Constructor to initialize the input, separator and quote for data
+     * Constructor to initialize the input, delimiter and quote for input
      * without a heading.
      */
-    this(Range input, Separator separator, Separator quote)
+    this(Range input, Separator delimiter, Separator quote)
     {
         _input = input;
-        _separator = separator;
+        _separator = delimiter;
         _quote = quote;
         
         static if(is(Contents == struct))
@@ -392,13 +387,13 @@ public:
     }
 
     /**
-     * Constructor to initialize the input, separator and quote for data
+     * Constructor to initialize the input, delimiter and quote for input
      * with a heading.
      */
-    this(Range input, Separator separator, Separator quote, string[] colHeaders)
+    this(Range input, Separator delimiter, Separator quote, string[] colHeaders)
     {
         _input = input;
-        _separator = separator;
+        _separator = delimiter;
         _quote = quote;
 
         size_t[string] colToIndex;
@@ -561,10 +556,10 @@ private:
 public:
     /**
      */
-    this(Range* input, Separator separator, Separator quote, size_t[] indices)
+    this(Range* input, Separator delimiter, Separator quote, size_t[] indices)
     {
         _input = input;
-        _separator = separator;
+        _separator = delimiter;
         _quote = quote;
         _front = appender!(char[])();
         _popCount = indices.dup;
@@ -672,11 +667,11 @@ public:
  * may also be useful when handling errors within a CSV file.
  *
  * This function consumes the input. After each call the input will
- * start with either a separator or record break (\n, \r\n, \r) which 
+ * start with either a delimiter or record break (\n, \r\n, \r) which 
  * must be removed for subsequent calls.
  *
  * params:
- *       input - Any CSV data
+ *       input - Any CSV input
  *       ans   - The first field in the input
  *       sep   - The character to represent a comma in the specification
  *       quote - The character to represent a quote in the specification
@@ -947,7 +942,7 @@ unittest
 }
 
 
-// Test modifying token separators
+// Test modifying token delimiter
 unittest
 {
     string str = `one|two|/three "quoted"/|//`;
