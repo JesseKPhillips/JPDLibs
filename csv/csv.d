@@ -134,6 +134,9 @@ import std.traits;
  * assert(records.heading == ["a","b","c"]);
  * -------
  *
+ * Bug: http://d.puremagic.com/issues/show_bug.cgi?id=2394 means null and [] must be cast
+ * to a string[].
+ *
  * Returns:
  *      If Contents is a struct, the range will return a
  *      struct populated by a single record.
