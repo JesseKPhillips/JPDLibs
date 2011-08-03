@@ -54,7 +54,7 @@ import std.traits;
  * This function simplifies the process for standard text input.
  * For other input create RecordList yourself.
  *
- * The Content of the input can be provided if if all the records are the same
+ * The Content of the input can be provided if all the records are the same
  * type. The ErrorLevel can be set to Malformed.ignore if best guess processing
  * should take place.
  *
@@ -85,6 +85,7 @@ import std.traits;
  * foreach(record; records) {
  *    foreach(cell; record) {
  *        assert(ans[count] == cell);
+ *        count++;
  *    }
  * }
  * -------
@@ -106,6 +107,31 @@ import std.traits;
  *     writeln(record.value);
  *     writeln(record.other);
  * }
+ * -------
+ *
+ * The header can be provided to identify which columns to read in.
+ *
+ * -------
+ * string str = "a,b,c\nHello,65,63.63\nWorld,123,3673.562";
+ * auto records = csvText(str, ["b"]);
+ *
+ * auto ans = ["65","123"];
+ * foreach(record; records)
+ *     foreach(cell; record) {
+ *         assert(cell == ans.front);
+ *         ans.popFront();
+ *     }
+ * -------
+ *
+ * The header can also be left empty if the file contains a header but
+ * all columns should be iterated. The heading from the file can always
+ * be accessed from the heading field.
+ *
+ * -------
+ * string str = "a,b,c\nHello,65,63.63\nWorld,123,3673.562";
+ * auto records = csvText(str, cast(string[])null);
+ *
+ * assert(records.heading == ["a","b","c"]);
  * -------
  *
  * Returns:
@@ -155,8 +181,6 @@ auto csvText(Contents = string, Malformed ErrorLevel
     return RecordList!(Contents,ErrorLevel,Range,ElementType!Range)
         (input, delimiter, quote, heading);
 }
-
-deprecated alias csvText csv;
 
 // Test standard iteration over input.
 unittest
@@ -389,6 +413,10 @@ public:
     /**
      * Constructor to initialize the input, delimiter and quote for input
      * with a heading.
+     *
+     * Throws:
+     *     HeadingOrderMismatchException when heading provided does not match
+     *     the order of the heading in the file.
      */
     this(Range input, Separator delimiter, Separator quote, string[] colHeaders)
     {
@@ -420,7 +448,7 @@ public:
         {
             immutable index = colToIndex[h];
             static if(!Malformed.ignore)
-                enforce(index < size_t.max,
+                enforceEx!(HeadingOrderMismatchException)(index < size_t.max,
                         "Header not found: " ~ to!string(h));
             indices[i] = index;
         }
@@ -469,6 +497,12 @@ public:
     }
 
     /**
+     * Brings the next Record into the front of the range.
+     *
+     * Throws:
+     *       ConvException when conversion fails.
+     *
+     *       ConvOverflowException when conversion overflows.
      */
     void popFront()
     {
@@ -541,6 +575,9 @@ public:
 }
 
 /**
+ * Returned by a RecordList when Contents is a non-struct.
+ *
+ * This range is not expected to be created by the user.
  */
 struct Record(Contents, Malformed ErrorLevel, Range, Separator)
     if(!is(Contents == class) && !is(Contents == struct))
@@ -555,6 +592,12 @@ private:
     size_t[] _popCount;
 public:
     /**
+     * params:
+     *      input = Pointer to a character input range
+     *      delimiter = Separator for each column
+     *      quote = Character used for quotation
+     *      indices = An array containing which columns will be returned.
+     *             If empty, all columns are returned. List must be in order.
      */
     this(Range* input, Separator delimiter, Separator quote, size_t[] indices)
     {
@@ -591,7 +634,7 @@ public:
         return _empty;
     }
     
-    /**
+    /*
      * Record is complete when input
      * is empty or starts with record break
      */
@@ -607,6 +650,12 @@ public:
 
 
     /**
+     * Brings the next Content into the front of the range.
+     *
+     * Throws:
+     *       ConvException when conversion fails.
+     *
+     *       ConvOverflowException when conversion overflows.
      */
     void popFront()
     {
@@ -633,7 +682,7 @@ public:
         prime();
     }
 
-    /**
+    /*
      * Handles moving to the next skipNum token.
      */
     private void prime(size_t skipNum) {
@@ -800,6 +849,18 @@ class IncompleteCellException : Exception
     {
         super(msg);
         partialData = cellPartial;
+    }
+}
+
+/**
+ * Exception thrown when a heading is provided but the
+ * order did not match that found in the file.
+ */
+class HeadingOrderMismatchException : Exception
+{
+    this(string msg)
+    {
+        super(msg);
     }
 }
 
