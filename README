@@ -1,5 +1,7 @@
 This project is built from branches. In stead of having every library I create reside in the same branch I am placing them in their own branch.
 
+Lesson Learned: Don't do this, well I actually still like it better than all the projects in one repo branch. Instead create a new project for each, github gives free public repos so use them. I may look into splitting this repo apart in the feature.
+
 I don't know if this is the best idea, but I can always merge my branches if I decide to.
 
 The code is released under the Boost License unless otherwise specified.
