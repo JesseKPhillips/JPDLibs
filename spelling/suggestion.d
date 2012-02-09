@@ -26,7 +26,6 @@ import std.string;
 version(spelling_main) import std.stdio;
 
 private int[string] model;
-
 /**
  * Give a suggested word based the given word.
  *
@@ -87,7 +86,6 @@ public void train(Range)(Range words) {
 /// Tells if a given word is misspelled
 public bool misspelled(string word) {
 	if(word == "") return false;
-	if(!match(word, regex(r"\d")).empty) return false;
 	if(word in model)
 		return false;
 	return true;
