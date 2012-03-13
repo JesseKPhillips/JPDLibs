@@ -171,7 +171,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
 			else
 				return ians;
 		else
-			writeln("You did not select a valid number.");
+			writeln("You did not select a valid entry.");
 	}
 }
 
