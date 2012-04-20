@@ -171,7 +171,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
 			else
 				return ians;
 		else
-			writeln("You did not select a valid number.");
+			writeln("You did not select a valid entry.");
 	}
 }
 
@@ -186,12 +186,16 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
  * Throws: NoInputException if the user does not provide any value.
  *         ConvError if the user does not provide any value.
  */
-T require(T, alias cond)(ref string question) {
+T require(T, alias cond)(in string question, in string failure = null) {
 	alias unaryFun!(cond) call;
 	T ans;
-	do {
+	while(1) {
 		ans = userInput!T(question);
-	} while(!call(ans));
+		if(call(ans))
+			break;
+		if(failure)
+			writeln(failure);
+	}
 
 	return ans;
 }
