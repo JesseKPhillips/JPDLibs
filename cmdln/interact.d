@@ -67,7 +67,7 @@ T userInput(T = string)(string question = "") {
 				return true;
 			default:
 		}
-		switch(ans.strip) {
+		switch(ans.strip()) {
 			case "continue":
 			case "ok":
 				return true;
@@ -81,7 +81,7 @@ T userInput(T = string)(string question = "") {
 		static if(isSomeChar!T) {
 			return to!(T)(ans[0]);
 		} else
-			return to!(T)(ans.strip);
+			return to!(T)(ans.strip());
 	}
 }
 
@@ -105,7 +105,7 @@ string pathLocation(string action) {
 		ans = userInput(action);
 		// Quotations will generally cause problems when
 		// using the path with std.file and Windows. This removes the quotes.
-		ans = ans.removechars("\";").strip;
+		ans = ans.removechars("\";").strip();
 		ans = ans[0] == '"' ? ans[1..$] : ans; // removechars skips first char
 	} while(!exists(ans));
 
@@ -139,7 +139,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
 		maxI = i+1;
 
 		writefln("%8s. %s", "No Input", "Quit");
-		ans = userInput!(string)("").strip;
+		ans = userInput!(string)("").strip();
 		int ians;
 
 		try {
@@ -148,7 +148,7 @@ T menu(T = ElementType!(Range), Range) (string question, Range options)
 			bool found;
 			i = 0;
 			foreach(o; options) {
-				if(ans.toLower == to!string(o).toLower) {
+				if(ans.toLower() == to!string(o).toLower()) {
 					found = true;
 					ians = i+1;
 					break;
