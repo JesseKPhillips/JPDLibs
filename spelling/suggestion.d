@@ -17,7 +17,6 @@
 module spelling.suggestion;
 
 import std.algorithm;
-import std.date;
 import std.file;
 import std.functional;
 import std.regex;
