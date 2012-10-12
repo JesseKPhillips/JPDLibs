@@ -1,8 +1,5 @@
 Dear Followers
 =============
-I will be changing my username from he-the-great to just JessePhillips. This change will effect existing clones.
-This is the only way I see to get the word out. Expect the change next week, Thank You.
-
 This project is built from branches. In stead of having every library I create reside in the same branch I am placing them in their own branch.
 
 Lesson Learned: Don't do this, well I actually still like it better than all the projects in one repo branch. Instead create a new project for each, github gives free public repos so use them. I may look into splitting this repo apart in the feature.
