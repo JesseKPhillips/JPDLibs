@@ -1,7 +1,7 @@
 {
 	"name":"cmdln",
 	"targetType": "library",
-	"description": "Basic user command line interaction."
+	"description": "Basic user command line interaction.",
 	"authors": ["Jesse Phillips"],
 	"license": "BSL-1.0",
 }
