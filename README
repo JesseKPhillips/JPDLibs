@@ -11,7 +11,7 @@ www.boost.org/LICENSE_1_0.txt
 
 Current projects are:
 
-cmdln.interact -- Provides a nicer interface to commandline interaction with the user.
+cmdln.interact -- This has been moved as part of https://github.com/Abscissa/scriptlike
 
 spelling.suggest -- Suggest a word from a misspelled word. Requires training.
 
