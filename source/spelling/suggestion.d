@@ -22,6 +22,7 @@ import std.file;
 import std.functional;
 import std.regex;
 import std.string;
+static import std.math;
 
 private int[string] model;
 /**
