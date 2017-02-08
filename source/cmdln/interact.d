@@ -77,7 +77,7 @@ T userInput(T = string)(string question = "") {
 	} else {
 		if(ans == "\x0a")
 			throw new NoInputException("Value required, "
-			                           "cannot continue operation.");
+			                           ~ "cannot continue operation.");
 		static if(isSomeChar!T) {
 			return to!(T)(ans[0]);
 		} else
