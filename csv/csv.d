@@ -47,7 +47,6 @@ import std.exception;
 import std.range;
 import std.stdio;
 import std.traits;
-import newadds;
 
 /**
  * Builds a RecordList range for iterating over tokens found in data.
@@ -121,7 +120,7 @@ unittest
     int value;
     double other;
   }
-    Layout ans[2];
+    Layout[2] ans;
     ans[0].name = "Hello";
     ans[0].value = 65;
     ans[0].other = 63.63;
@@ -155,7 +154,7 @@ unittest
 
     auto records = csvText!Layout(str, ["b","c","a"]);
 
-    Layout ans[2];
+    Layout[2] ans;
     ans[0].name = "Hello";
     ans[0].value = 65;
     ans[0].other = 63.63;
@@ -467,7 +466,7 @@ public:
  */
 private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                            Range)
-                          (ref Range line) if(hasSlicing!Range)
+                          (ref Range line)
 {
     return csvNextToken!(ErrorLevel, Range)(line, ",", "\"", "\n");
 }
@@ -477,7 +476,7 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                            Range, Separator)
                           (ref Range line, Separator sep,
                            Separator quote, Separator recordBreak) 
-                          if(hasSlicing!Range && isInputRange!Range)
+                          if(isInputRange!Range)
 {
     bool escQuote;
     if(line.empty || startsWith(line, recordBreak))
