@@ -8,7 +8,7 @@
  * -------
  * string str = `76,26,22`;
  * int[] ans = [76,26,22];
- * auto records = csvText!int(str);
+ * auto records = csvReader!int(str);
  * 
  * int count;
  * foreach(record; records) {
@@ -29,7 +29,7 @@
  *  double other;
  * }
  * 
- * auto records = csvText!Layout(str);
+ * auto records = csvReader!Layout(str);
  * 
  * foreach(record; records) {
  *  writeln(record.name);
@@ -56,7 +56,7 @@ import std.traits;
  * -------
  * string str = `76,26,22`;
  * int[] ans = [76,26,22];
- * auto records = csvText!int(str);
+ * auto records = csvReader!int(str);
  * 
  * int count;
  * foreach(record; records) {
@@ -76,7 +76,7 @@ import std.traits;
  * Throws:
  *        IncompleteCellException When data is shown to not be complete.
  */
-auto csvText(Contents = string,
+auto csvReader(Contents = string,
              Malformed ErrorLevel = Malformed.throwException, Range)
             (Range data) if (isSomeString ! Range)
 {
@@ -85,7 +85,7 @@ auto csvText(Contents = string,
 }
 
 /// Ditto
-auto csvText(Contents = string,
+auto csvReader(Contents = string,
              Malformed ErrorLevel = Malformed.throwException, Range)
             (Range data, Range[] heading) if (isSomeString ! Range)
 {
@@ -93,11 +93,20 @@ auto csvText(Contents = string,
                       (data, ",", "\"", "\n", heading);
 }
 
+/// Ditto
+auto csvReader(Contents = string,
+             Malformed ErrorLevel = Malformed.throwException, Range)
+            (Range data, string dilm) if (isSomeString ! Range)
+{
+    return RecordList!(Contents, ErrorLevel, Range, string)
+                      (data, dilm, "\"", "\n");
+}
+
 // Test standard iteration over data.
 unittest
 {
     string str = `Hello,World,"Hi ""There""","",` ~ "\"It is\nme\"\nNot here";
-    auto records = csvText(str);
+    auto records = csvReader(str);
 
     int count;
     foreach(record; records)
@@ -128,7 +137,7 @@ unittest
     ans[1].value = 123;
     ans[1].other = 3673.562;
 
-    auto records = csvText!Layout(str);
+    auto records = csvReader!Layout(str);
 
     int count;
     foreach (record; records)
@@ -152,7 +161,7 @@ unittest
         string name;
     }
 
-    auto records = csvText!Layout(str, ["b","c","a"]);
+    auto records = csvReader!Layout(str, ["b","c","a"]);
 
     Layout[2] ans;
     ans[0].name = "Hello";
@@ -178,7 +187,7 @@ unittest
 {
     string str = `76,26,22`;
     int[] ans = [76,26,22];
-    auto records = csvText!int(str);
+    auto records = csvReader!int(str);
 
     int count;
     foreach (record; records)
@@ -196,7 +205,7 @@ unittest
 unittest
 {
     string str = "It is me \"Not here\"";
-    foreach (record; csvText!(string, Malformed.ignore)(str))
+    foreach (record; csvReader!(string, Malformed.ignore)(str))
     {
         foreach (cell; record)
         {
@@ -209,7 +218,7 @@ unittest
     {
         string a, b, c;
     }
-    foreach(record; csvText!(Ans, Malformed.ignore) (str))
+    foreach(record; csvReader!(Ans, Malformed.ignore) (str))
     {
         assert (record.a == "It is me \"Not here\"");
         assert (record.b == "In \"the\" sand");
@@ -220,7 +229,7 @@ unittest
 /**
  * Builds a range for iterating over data structured the common
  * CSV format. Use this function if your data uses a custom 
- * separator, quote, or record break. Use csvText() if your
+ * separator, quote, or record break. Use csvReader() if your
  * data conforms to the standard.
  *
  * Returns:
@@ -485,7 +494,7 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
     if(startsWith(line, quote)) 
     {
         skipOver(line, quote);
-        auto count = countUntil(line, quote);
+        auto count = countUntil(cast(ubyte[])line, cast(ubyte[])quote);
         // Should find either an closing quote or an escaping quote
         if(count == -1) 
         {
@@ -498,7 +507,7 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
 
         Range ans = Range.init;
 
-        // Is broken when
+        // BUG: Is broken when
         //     Data is exhausted 
         //     End of token is reached
         for (;;)
@@ -518,20 +527,18 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                     // next quote/separator/recordBreak and do
                     // not modify the data.
                     count += quote.length;
-                    auto add = countUntil(line[count..$], 
-                                          quote, sep, recordBreak);
+                    auto add = countUntil(cast(ubyte[])line[count..$], 
+                                          cast(ubyte[])quote, cast(ubyte[])sep, cast(ubyte[])recordBreak);
                     if(add == -1)
                     {
-                        count = line.length;
-                        ans ~= line[0..count];
+						count = line.length;
+                        ans = line;
                         break;
                     }
                     else
                     {
                         count += add;
-                        ans ~= line[0..count];
-                        line = line[count..$];
-                        count = 0;
+                        ans = line[0..count];
                         continue;
                     }
                 }
@@ -539,34 +546,38 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                 {
                     throw new IncompleteCellException(line[0..count],
                              "Content continues after end quote, needs to be" ~
-                             "escaped.");
+                             " escaped.");
                 }
             }
             // Next element is a quote.
             else if(next == 1)
             {
-                count += quote.length;
-                ans ~= line[0..count];
-                line = line[count + quote.length..$];
-                count = 0;
+                count += quote.length*2;
+                ans = line[0..count];
             }
             // End of token is reached
-            else if(next > 1)
+            else if(next == 2)
             {
-                ans ~= line[0..count];
-                count += quote.length;
+                ans = line[0..count];
+                count += sep.length;
+                break;
+            }
+            else if(next == 3)
+            {
+                ans = line[0..count];
+                count += recordBreak.length;
                 break;
             }
             // Unless the data is poorly formed there should
             // always be another quote. Under such conditions
             // the best assumption is to return the rest of
             // the data when ignoring malformed data.
-            auto add = countUntil(line[count..$], quote);
+            auto add = countUntil(cast(ubyte[])line[count..$], cast(ubyte[])quote);
             if(add == -1)
             {
                 static if(ErrorLevel == Malformed.ignore)
                 {
-                    ans ~= line;
+                    ans = line;
                     break;
                 }
                 else
@@ -579,7 +590,6 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
 
         line = line[count..$];
         return ans;
-
     }
     else 
     {
@@ -587,11 +597,11 @@ private Range csvNextToken(Malformed ErrorLevel = Malformed.throwException,
         // when the data did not begin with a quote.
         static if(ErrorLevel == Malformed.ignore)
         {
-            auto count = countUntil(line, sep, recordBreak);
+            auto count = countUntil(cast(ubyte[])line, cast(ubyte[])sep, cast(ubyte[])recordBreak);
         }
         else 
         {
-            auto count = countUntil(line, sep, recordBreak, quote);
+            auto count = countUntil(cast(ubyte[])line, cast(ubyte[])sep, cast(ubyte[])recordBreak, cast(ubyte[])quote);
             if(count != -1)
                 if(startsWith(line[count..$], quote))
                     throw new IncompleteCellException(line[0..count],
@@ -683,7 +693,7 @@ unittest
 
     str.popFront();
     a = csvNextToken(str);
-    assert(a == "Hi \"There\"");
+    assert(a == "Hi \"\"There\"\"");
     assert(str == `,"",` ~ "\"It is\nme\"\nNot here");
 
     str.popFront();
