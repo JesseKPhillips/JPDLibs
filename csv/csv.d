@@ -398,6 +398,22 @@ public:
                                     (_input, _separator, _quote, _recordBreak);
         }
     }
+
+	static if(isForwardRange!Range) {
+		RecordList save() {
+			RecordList r;
+			r._input = _input.save;
+			r._quote = _quote;
+			r._separator = _separator;
+			r._recordBreak = _recordBreak;
+			r._empty = _empty;
+			static if(is(Contents == struct))
+				r.recordContent = recordContent;
+			else
+				r.recordRange = recordRange.save;
+			return r;
+		}
+	}
 }
 
 /**
@@ -457,6 +473,19 @@ public:
                                 (_input, _separator, _quote, _recordBreak);
         curContent = to!Contents(str);
     }
+
+	static if(isForwardRange!Range) {
+		Record save() {
+			Record r;
+			r._input = _input.save;
+			r._quote = _quote;
+			r._separator = _separator;
+			r._recordBreak = _recordBreak;
+			r.curContent = curContent;
+			r._empty = _empty;
+			return r;
+		}
+	}
 }
 
 /**
