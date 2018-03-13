@@ -224,10 +224,6 @@ enum Malformed
  *       column is not found or the order did not match that found in the input
  *       (non-struct).
  */
- version(none) {
-alias csvReader csvText;
-
-/// Ditto
 auto csvReader(Contents = string, Malformed ErrorLevel
              = Malformed.throwException, Range)(Range input)
     if(isInputRange!Range && isSomeChar!(ElementType!Range)
@@ -459,10 +455,6 @@ unittest
  * -------
  *
  */
-}
-alias Records RecordList;
-
-/// Ditto
 struct Records(Contents, Malformed ErrorLevel, Range, Separator, Heading)
     if(isSomeChar!Separator && isInputRange!Range
        && isSomeChar!(ElementType!Range) && !is(Contents == class)
@@ -514,8 +506,6 @@ public:
         _input = input;
         _separator = delimiter;
         _quote = quote;
-        recordRange = typeof(recordRange)
-                             (&_input, _separator, _quote, null);
 
         static if(is(Contents == struct))
         {
@@ -523,6 +513,18 @@ public:
             foreach(i, j; FieldTypeTuple!Contents)
                 indices[i] = i;
         }
+
+        static if(is(Contents == struct))
+        {
+            recordRange = typeof(recordRange)
+                                 (&_input, _separator, _quote, null);
+        }
+        else
+        {
+            recordRange = typeof(recordRange)
+                                 (&_input, _separator, _quote, indices);
+        }
+
         prime();
     }
 
@@ -551,8 +553,6 @@ public:
         _input = input;
         _separator = delimiter;
         _quote = quote;
-        recordRange = typeof(recordRange)
-                             (&_input, _separator, _quote, null);
 
         size_t[string] colToIndex;
         foreach(h; colHeaders)
@@ -597,6 +597,17 @@ public:
                     throw new HeadingMismatchException
                         ("Header in input does not match specified header.");
             }
+        }
+
+        static if(is(Contents == struct))
+        {
+            recordRange = typeof(recordRange)
+                                 (&_input, _separator, _quote, null);
+        }
+        else
+        {
+            recordRange = typeof(recordRange)
+                                 (&_input, _separator, _quote, indices);
         }
 
         popFront();
@@ -673,24 +684,26 @@ public:
 
         if(_input.empty)
             _empty = true;
+        else {
+            static if(is(Contents == struct))
+            {
+                recordRange = typeof(recordRange)
+                                     (&_input, _separator, _quote, null);
+            }
+            else
+            {
+                recordRange = typeof(recordRange)
+                                     (&_input, _separator, _quote, indices);
+            }
 
-        prime();
+            prime();
+        }
     }
 
     private void prime()
     {
         if(_empty)
             return;
-        static if(is(Contents == struct))
-        {
-            recordRange = typeof(recordRange)
-                                 (&_input, _separator, _quote, null);
-        }
-        else
-        {
-            recordRange = typeof(recordRange)
-                                 (&_input, _separator, _quote, indices);
-        }
         static if(is(Contents == struct))
         {
             size_t colIndex;
@@ -755,7 +768,7 @@ public:
      *      indices = An array containing which columns will be returned.
      *             If empty, all columns are returned. List must be in order.
      */
-    this(Range* input, Separator delimiter, Separator quote, size_t[] indices)
+    this(Range* input, Separator delimiter, Separator quote, const(size_t)[] indices)
     {
         _input = input;
         _separator = delimiter;
@@ -790,7 +803,7 @@ public:
      */
     @property Contents front()
     {
-        assert(!empty);
+        assert(!empty, "Attempting to access front of empty Record");
         return curContentsoken;
     }
 
@@ -816,7 +829,6 @@ public:
         }
         return false;
     }
-
 
     /**
      * Part of the $(XREF range, InputRange) interface.
@@ -862,6 +874,7 @@ public:
         foreach(i; 0..skipNum)
         {
             while(!_front.empty) _front.popFront();
+            if(recordEnd()) break;
             if((*_input).front == _separator)
                 (*_input).popFront();
             _front = csvNextToken!(ErrorLevel, Range, Separator)
@@ -887,8 +900,34 @@ public:
 
         if(skipNum)
             prime(skipNum);
-        curContentsoken = to!Contents(_front.array);
+        curContentsoken = to!Contents(decode(_front, _quote));
     }
+}
+unittest {
+    string str = `76;^26^;22`;
+    int[] ans = [76,26,22];
+    auto record = Record!(int,Malformed.ignore,string,char)
+          (&str, ';', '^', null);
+
+    assert(equal(record, ans));
+}
+
+// Surrounding quotes are not included this leaves only
+// handling double quotes.
+auto decode(Range, Separator)(Range orig, Separator quote) {
+    dchar[] ans;
+    while(!orig.empty) {
+        if(orig.front == quote) {
+            ans ~= orig.front;
+            orig.popFront();
+            if(!orig.empty && orig.front == quote)
+                orig.popFront();
+            continue;
+        } else
+            ans ~= orig.front;
+        orig.popFront();
+    }
+    return ans;
 }
 
 /**
@@ -943,7 +982,7 @@ auto csvNextToken(Malformed ErrorLevel = Malformed.throwException,
         Separator quote;
         bool escQuote;
         Range* input;
-        @property auto empty() {
+        @property auto empty() const {
             if((*input).empty) {
                 static if(ErrorLevel == Malformed.throwException)
                     if(quoted) throw new IncompleteCellException("",
@@ -1121,6 +1160,21 @@ unittest
     a = csvNextToken(str,',','"');
     assert(a.equal("six"));
     assert(str == "");
+}
+
+// Test Windows line break
+unittest
+{
+    string str = "one,two\r\nthree";
+
+    auto a = csvNextToken(str,',','"');
+    assert(a.equal("one"));
+    assert(str == ",two\r\nthree");
+
+    str.popFront();
+    a = csvNextToken(str,',','"');
+    assert(a.equal("two"));
+    assert(str == "\r\nthree");
 }
 
 // Test empty data is pulled at end of record.
