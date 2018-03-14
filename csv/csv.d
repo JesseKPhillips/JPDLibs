@@ -756,7 +756,7 @@ private:
     Separator _separator;
     Separator _quote;
     Contents curContentsoken;
-    ReturnType!(csvNextToken!(ErrorLevel, Range, Separator)) _front;
+    TokenRange!(ErrorLevel, Range, Separator) _front;
     bool _empty;
     size_t[] _popCount;
 public:
@@ -976,120 +976,122 @@ auto csvNextToken(Malformed ErrorLevel = Malformed.throwException,
                           if(isSomeChar!Separator && isInputRange!Range
                              && isSomeChar!(ElementType!Range))
 {
-    struct TRange {
-        bool quoted;
-        Separator sep;
-        Separator quote;
-        bool escQuote;
-        Range* input;
-        @property auto empty() const {
-            if((*input).empty) {
-                static if(ErrorLevel == Malformed.throwException)
-                    if(quoted) throw new IncompleteCellException("",
-                       "Data continues on future lines or trailing quote");
-                return true;
-            }
-            if(!quoted)
-            {
-                // When not quoted the token ends at sep
-                if((*input).front == sep)
-                    return true;
-                if((*input).front == '\n')
-                    return true;
-                if((*input).front == '\r')
-                    return true;
-            }
-            return false;
-        }
-
-        @property ElementType!Range front() {
-            return (*input).front;
-        }
-
-        void popFront() {
-            if(escQuote && (*input).front == quote)
-            {
-                escQuote = false;
-                quoted = true;
-            }
-
-            (*input).popFront();
-            if(empty)
-                return;
-            if(!quoted && !escQuote)
-            {
-                if((*input).front == quote)
-                {
-                    // Not quoted, but quote found
-                    static if(ErrorLevel == Malformed.throwException)
-                        throw new IncompleteCellException("",
-                              "Quote located in unquoted token");
-                    else static if(ErrorLevel == Malformed.ignore)
-                        return;
-                }
-                else
-                {
-                    // Not quoted, non-quote character
-                    return;
-                }
-            }
-            else
-            {
-                if((*input).front == quote)
-                {
-                    // Quoted, quote found
-                    // By turning off quoted and turning on escQuote
-                    // I can tell when to add a quote to the string
-                    // escQuote is turned to false when it escapes a
-                    // quote or is followed by a non-quote (see outside else).
-                    // They are mutually exclusive, but provide different
-                    // information.
-                    if(escQuote)
-                    {
-                        escQuote = false;
-                        quoted = true;
-                        return;
-                    } else
-                    {
-                        escQuote = true;
-                        quoted = false;
-                        (*input).popFront();
-                        return;
-                    }
-                }
-                else
-                {
-                    // Quoted, non-quote character
-                    if(escQuote)
-                    {
-                        static if(ErrorLevel == Malformed.throwException)
-                            throw new IncompleteCellException("",
-                              "Content continues after end quote, " ~
-                              "or needs to be escaped.");
-                        else static if(ErrorLevel == Malformed.ignore)
-                            return;
-                    }
-                }
-            }
-        }
-
-        private void prime() {
-            if((*input).empty)
-                return;
-            if((*input).front == quote)
-            {
-                quoted = true;
-                popFront();
-            }
-        }
-    }
-    TRange r;
+    TokenRange!(ErrorLevel, Range, Separator) r;
     r.input = &input;
     r.quoted = startQuoted;
     r.sep = sep;
     r.quote = quote;
     r.prime();
     return r;
+}
+
+struct TokenRange(Malformed ErrorLevel = Malformed.throwException,
+                           Range, Separator) {
+    bool quoted;
+    Separator sep;
+    Separator quote;
+    bool escQuote;
+    Range* input;
+    @property auto empty() const {
+        if((*input).empty) {
+            static if(ErrorLevel == Malformed.throwException)
+                if(quoted) throw new IncompleteCellException("",
+                   "Data continues on future lines or trailing quote");
+            return true;
+        }
+        if(!quoted)
+        {
+            // When not quoted the token ends at sep
+            if((*input).front == sep)
+                return true;
+            if((*input).front == '\n')
+                return true;
+            if((*input).front == '\r')
+                return true;
+        }
+        return false;
+    }
+
+    @property ElementType!Range front() {
+        return (*input).front;
+    }
+
+    void popFront() {
+        if(escQuote && (*input).front == quote)
+        {
+            escQuote = false;
+            quoted = true;
+        }
+
+        (*input).popFront();
+        if(empty)
+            return;
+        if(!quoted && !escQuote)
+        {
+            if((*input).front == quote)
+            {
+                // Not quoted, but quote found
+                static if(ErrorLevel == Malformed.throwException)
+                    throw new IncompleteCellException("",
+                          "Quote located in unquoted token");
+                else static if(ErrorLevel == Malformed.ignore)
+                    return;
+            }
+            else
+            {
+                // Not quoted, non-quote character
+                return;
+            }
+        }
+        else
+        {
+            if((*input).front == quote)
+            {
+                // Quoted, quote found
+                // By turning off quoted and turning on escQuote
+                // I can tell when to add a quote to the string
+                // escQuote is turned to false when it escapes a
+                // quote or is followed by a non-quote (see outside else).
+                // They are mutually exclusive, but provide different
+                // information.
+                if(escQuote)
+                {
+                    escQuote = false;
+                    quoted = true;
+                    return;
+                } else
+                {
+                    escQuote = true;
+                    quoted = false;
+                    (*input).popFront();
+                    return;
+                }
+            }
+            else
+            {
+                // Quoted, non-quote character
+                if(escQuote)
+                {
+                    static if(ErrorLevel == Malformed.throwException)
+                        throw new IncompleteCellException("",
+                          "Content continues after end quote, " ~
+                          "or needs to be escaped.");
+                    else static if(ErrorLevel == Malformed.ignore)
+                        return;
+                }
+            }
+        }
+    }
+
+    private void prime() {
+        if((*input).empty)
+            return;
+        if((*input).front == quote)
+        {
+            quoted = true;
+            popFront();
+        }
+    }
 }
 
 // Test csvNextToken on simplest form and correct format.
@@ -1249,4 +1251,37 @@ unittest
     str.popFront();
     a = csvNextToken(str, '|','/');
     assert(a.equal(""));
+}
+
+void csvNextToken(Malformed ErrorLevel = Malformed.throwException,
+                            Range, Separator)
+                          (ref Range input, ref Appender!(char[]) ans,
+                            Separator sep, Separator quote,
+                            bool startQuoted = false)
+                           if(isSomeChar!Separator && isInputRange!Range
+                              && isSomeChar!(ElementType!Range))
+{
+    auto quoted = false;
+    foreach(c; csvNextToken!(ErrorLevel)(input, sep, quote, startQuoted))
+    {
+        static if(ErrorLevel != Malformed.ignore)
+            if(quoted && c == quote)
+                continue;
+        ans.put(c);
+        if(c == quote)
+            quoted = true;
+        else quoted = false;
+    }
+}
+unittest
+{
+    string str = "one,";
+    auto a = appender!(char[]);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "one");
+    assert(str == ",");
+
+    a.shrinkTo(0);
+    csvNextToken(str,a,',','"');
+    assert(a.data == "");
 }
