@@ -992,7 +992,7 @@ struct TokenRange(Malformed ErrorLevel = Malformed.throwException,
     Separator quote;
     bool escQuote;
     Range* input;
-    @property auto empty() const {
+    @property auto empty() {
         if((*input).empty) {
             static if(ErrorLevel == Malformed.throwException)
                 if(quoted) throw new IncompleteCellException("",
